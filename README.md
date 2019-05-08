@@ -17,7 +17,4 @@ Three real-world large-scale examples--power system planning, portfolio optimiza
 ## Documentations
 Documentations are currently developing and will be released soon.
 ## Citing MSPPy
-If you use MSPPy in a publication, please cite the following paper
-```bash
-
-```
+If you use MSPPy in a publication, please cite this [paper](http://www.optimization-online.org/DB_HTML/2019/05/7199.html)

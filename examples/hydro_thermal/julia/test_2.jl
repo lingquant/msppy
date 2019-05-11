@@ -4,20 +4,6 @@
 #  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #############################################################################
 
-#==
-The Asset Management problem taken from
-
-    J. R. Birge,  F. Louveaux,  Introduction to Stochastic Programming,
-    Springer Series in Operations Research and Financial Engineering,
-    Springer New York, New York, NY, 2011
-    solver = CplexSolver(CPXPARAM_ScreenOutput = 0),
-    solver = GurobiSolver(OutputFlag = 0),
-    print(Gurobi.getlibversion())
-
-
-==#
-
-
 using SDDP, JuMP, CSV, Gurobi, MathProgBase
 using Base.Test
 print("gurobi version: ", Gurobi.getlibversion(),"; ")
@@ -66,57 +52,39 @@ scenarios =
 inflow_initial = [39717.564, 6632.5141, 15897.183, 2525.938]
 
 m = SDDPModel(
-                  sense = :Min,
-                 stages = 120,
-                 solver = GurobiSolver(OutputFlag = 0),
-                 objective_bound = 0.0,
-                                        ) do sp, t
-
+        sense = :Min,
+        stages = 120,
+        solver = GurobiSolver(OutputFlag = 0),
+        objective_bound = 0.0) do sp, t
     s = t%12==0?12:t%12
-    @state(sp, 0 <= storedEnergy_now_1 <= storedEnergy_ub[1], storedEnergy_past_1==storedEnergy_initial[1])
-    @state(sp, 0 <= storedEnergy_now_2 <= storedEnergy_ub[2], storedEnergy_past_2==storedEnergy_initial[2])
-    @state(sp, 0 <= storedEnergy_now_3 <= storedEnergy_ub[3], storedEnergy_past_3==storedEnergy_initial[3])
-    @state(sp, 0 <= storedEnergy_now_4 <= storedEnergy_ub[4], storedEnergy_past_4==storedEnergy_initial[4])
+    @state(sp,
+        0 <= storedEnergy_now[i=1:4] <= storedEnergy_ub[i],
+        storedEnergy_past == storedEnergy_initial[i])
+    THERMAL_I = [43, 17, 33, 2]
+    @variables(sp, begin
+                            spillEnergy[i=1:4]               >= 0
+                       0 <= hydroGeneration[i=1:4]           <= hydro_ub[i]
+        thermal_lb[j][i] <= thermal[j=1:4, i=1:THERMAL_I[j]] <= thermal_ub[j][i]
+                       0 <= exchange[i=1:5, j=1:5]           <= exchange_ub[j][i]
+                       0 <= deficit[i=1:4, j=1:4]            <= demand[s][ij * deficit_ub[i]
+    end)
+    @stageobjective(sp,
+        sum(deficit_obj[i] * deficit[j, i] for i=1:4, j=1:4) +
+        sum(thermal_obj[j][i] * thermal[j, i] for j=1:4, i=1:THERMAL_I[j]))
+    @constraints(sp, begin
+        [j=1:4], sum(deficit[j, i] for i=1:4) + hydroGeneration[j] +
+            sum(thermal[1, i] for i=1:43) + sum(exchange[i, 1] for i in 1:5) -
+            sum(exchange[1, i] for i=1:5 ) == demand[s][j]
+        sum(exchange[j, 5] for j in 1:5) - sum(exchange[5, i] for i=1:5) == 0
+    end)
 
-    @variable(sp, spillEnergy[i=1:4] >=0)
-    @variable(sp, 0 <= hydroGeneration[i=1:4] <= hydro_ub[i])
-    @variable(sp, thermal_lb[1][i] <= thermal_1[i=1:43] <= thermal_ub[1][i] )
-    @variable(sp, thermal_lb[2][i] <= thermal_2[i=1:17] <= thermal_ub[2][i] )
-    @variable(sp, thermal_lb[3][i] <= thermal_3[i=1:33] <= thermal_ub[3][i] )
-    @variable(sp, thermal_lb[4][i] <= thermal_4[i=1:2] <= thermal_ub[4][i] )
-
-    @variable(sp, 0 <= exchange_1[i=1:5] <= exchange_ub[1][i])
-    @variable(sp, 0 <= exchange_2[i=1:5] <= exchange_ub[2][i])
-    @variable(sp, 0 <= exchange_3[i=1:5] <= exchange_ub[3][i])
-    @variable(sp, 0 <= exchange_4[i=1:5] <= exchange_ub[4][i])
-    @variable(sp, 0 <= exchange_5[i=1:5] <= exchange_ub[5][i])
-
-    @variable(sp, 0 <= deficit_1[i=1:4] <= (demand[s][1] * deficit_ub[i]) )
-    @variable(sp, 0 <= deficit_2[i=1:4] <= (demand[s][2] * deficit_ub[i]))
-    @variable(sp, 0 <= deficit_3[i=1:4] <= (demand[s][3] * deficit_ub[i]))
-    @variable(sp, 0 <= deficit_4[i=1:4] <= (demand[s][4] * deficit_ub[i]))
-
-    @stageobjective(sp, sum(deficit_obj[i] * deficit_1[i] for i=1:4) + sum(deficit_obj[i] * deficit_2[i] for i=1:4) +
-    + sum(deficit_obj[i] * deficit_3[i] for i=1:4) + sum(deficit_obj[i] * deficit_4[i] for i=1:4) +
-    sum(thermal_obj[1][i] * thermal_1[i] for i=1:43) + sum(thermal_obj[2][i] * thermal_2[i] for i=1:17) +
-    sum(thermal_obj[3][i] * thermal_3[i] for i=1:33) + sum(thermal_obj[4][i] * thermal_4[i] for i=1:2))
-
-    @constraint(sp, sum(deficit_1[i] for i=1:4) + hydroGeneration[1] + sum(thermal_1[i] for i=1:43) + exchange_1[1] + exchange_2[1] + exchange_3[1] + exchange_4[1] + exchange_5[1]- sum(exchange_1[i] for i=1:5)== demand[s][1])
-    @constraint(sp, sum(deficit_2[i] for i=1:4) + hydroGeneration[2] + sum(thermal_2[i] for i=1:17) + exchange_1[2]+ exchange_2[2] + exchange_3[2] + exchange_4[2] + exchange_5[2]- sum(exchange_2[i] for i=1:5)== demand[s][2])
-    @constraint(sp, sum(deficit_3[i] for i=1:4) + hydroGeneration[3] + sum(thermal_3[i] for i=1:33) + exchange_1[3]+ exchange_2[3] + exchange_3[3] + exchange_4[3] + exchange_5[3]- sum(exchange_3[i] for i=1:5)== demand[s][3])
-    @constraint(sp, sum(deficit_4[i] for i=1:4) + hydroGeneration[4] + sum(thermal_4[i] for i=1:2) + exchange_1[4]+ exchange_2[4] + exchange_3[4] + exchange_4[4] + exchange_5[4]- sum(exchange_4[i] for i=1:5)== demand[s][4])
-    @constraint(sp, exchange_1[5] + exchange_2[5] + exchange_3[5] + exchange_4[5] + exchange_5[5] - sum(exchange_5[i] for i=1:5) == 0 )
     if t == 1
-        @constraint(sp, storedEnergy_now_1 + spillEnergy[1] + hydroGeneration[1] - storedEnergy_past_1 == inflow_initial[1])
-        @constraint(sp, storedEnergy_now_2 + spillEnergy[2] + hydroGeneration[2] - storedEnergy_past_2 == inflow_initial[2])
-        @constraint(sp, storedEnergy_now_3 + spillEnergy[3] + hydroGeneration[3] - storedEnergy_past_3 == inflow_initial[3])
-        @constraint(sp, storedEnergy_now_4 + spillEnergy[4] + hydroGeneration[4] - storedEnergy_past_4 == inflow_initial[4])
+        @constraint(sp, [i=1:4], storedEnergy_now[i] + spillEnergy[i] + hydroGeneration[i] - storedEnergy_past[i] == inflow_initial[i])
     else
         r = (t-1)%12==0?12:(t-1)%12
-        @rhsnoise(sp, inflow_1 = scenarios[1][r], storedEnergy_now_1 + spillEnergy[1] + hydroGeneration[1] - storedEnergy_past_1 == inflow_1)
-        @rhsnoise(sp, inflow_2 = scenarios[2][r], storedEnergy_now_2 + spillEnergy[2] + hydroGeneration[2] - storedEnergy_past_2 == inflow_2)
-        @rhsnoise(sp, inflow_3 = scenarios[3][r], storedEnergy_now_3 + spillEnergy[3] + hydroGeneration[3] - storedEnergy_past_3 == inflow_3)
-        @rhsnoise(sp, inflow_4 = scenarios[4][r], storedEnergy_now_4 + spillEnergy[4] + hydroGeneration[4] - storedEnergy_past_4 == inflow_4)
+        for i in 1:4
+            @rhsnoise(sp, inflow = scenarios[i][r], storedEnergy_now[i] + spillEnergy[i] + hydroGeneration[i] - storedEnergy_past[i] == inflow)
+        end
     end
 end
 srand(parse(Int,ARGS[1]))

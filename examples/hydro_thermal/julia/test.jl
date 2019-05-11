@@ -4,20 +4,6 @@
 #  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #############################################################################
 
-#==
-The Asset Management problem taken from
-
-    J. R. Birge,  F. Louveaux,  Introduction to Stochastic Programming,
-    Springer Series in Operations Research and Financial Engineering,
-    Springer New York, New York, NY, 2011
-    solver = CplexSolver(CPXPARAM_ScreenOutput = 0),
-    solver = GurobiSolver(OutputFlag = 0),
-    print(Gurobi.getlibversion())
-
-
-==#
-
-
 using SDDP, JuMP, CSV, Gurobi, MathProgBase
 using Base.Test
 print("gurobi version: ", Gurobi.getlibversion(),"; ")

@@ -405,7 +405,7 @@ class MSLP(object):
             random_state = check_random_state(random_state)
             for t in range(1,self.T):
                 self.models[t]._discretize(n_samples[t],random_state,replace)
-        if n_Markov_states is None: return
+        if n_Markov_states is None and method != 'input': return
         if n_Markov_states is not None:
             if isinstance(n_Markov_states, (numbers.Integral, numpy.integer)):
                 if n_Markov_states < 1:

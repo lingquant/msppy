@@ -110,6 +110,7 @@ def plot_bounds(db, pv, sense=1, percentile=95, start=0, window=1, smooth=0, ax=
         CI = CI[max(start,window-1)-window+1:end]
         CI_lower_end = [item[0] for item in CI]
         CI_upper_end = [item[1] for item in CI]
+        CI_mid = [sum(item)/len(item) for item in CI]
         ax.fill_between(
             x_value,
             CI_lower_end,
@@ -129,12 +130,9 @@ def plot_bounds(db, pv, sense=1, percentile=95, start=0, window=1, smooth=0, ax=
             if smooth == 1:
                 ax.plot(
                     x_value,
-                    fit(CI_upper_end, convex=1),
+                    fit(CI_mid, convex=1),
                     '--g',
-                    label=(
-                        'smoothed statistical bounds '
-                        +str(percentile)+'% C'
-                    )
+                    label='smoothed policy values'
                 )
         else:
             ax.plot(
@@ -146,12 +144,9 @@ def plot_bounds(db, pv, sense=1, percentile=95, start=0, window=1, smooth=0, ax=
             if smooth == 1:
                 ax.plot(
                     x_value,
-                    fit(CI_lower_end, convex=-1),
+                    fit(CI_mid, convex=-1),
                     '--g',
-                    label=(
-                        'smoothed statistical bounds '
-                        +str(percentile)+'% C'
-                    )
+                    label='smoothed policy values'
                 )
     else:
         pv = pv[start:end]

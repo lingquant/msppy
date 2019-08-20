@@ -74,6 +74,7 @@ class Evaluation(_Evaluation):
             n_simulations,
             percentile=95,
             query=None,
+            query_dual=None,
             query_stage_cost=False,
             random_state=None,):
         """Run a Monte Carlo simulation to evaluate the policy on the
@@ -87,6 +88,9 @@ class Evaluation(_Evaluation):
 
         query: list, optional (default=None)
             The names of variables that are intended to query.
+
+        query_dual: list, optional (default=None)
+            The names of constraints whose dual variables are intended to query.
 
         query_stage_cost: bool, optional (default=False)
             Whether to query values of individual stage costs.
@@ -105,6 +109,7 @@ class Evaluation(_Evaluation):
         """
         random_state = check_random_state(random_state)
         query = [] if query is None else list(query)
+        query_dual = [] if query_dual is None else list(query_dual)
         MSP = self.MSP
         if n_simulations == -1:
             n_sample_paths, sample_paths = MSP._enumerate_sample_paths(MSP.T-1)
@@ -116,6 +121,7 @@ class Evaluation(_Evaluation):
                 [0 for _ in range(n_sample_paths)] for _ in range(MSP.T)
             ]
         solution = {item: [[] for _ in range(MSP.T)] for item in query}
+        solution_dual = {item: [[] for _ in range(MSP.T)] for item in query_dual}
         # forward Sampling
         for j in range(n_sample_paths):
             if n_simulations == -1:
@@ -163,6 +169,9 @@ class Evaluation(_Evaluation):
                 for var in m.getVars():
                     if var.varName in query:
                         solution[var.varName][t].append(var.X)
+                for constr in m.getConstrs():
+                    if constr.constrName in query_dual:
+                        solution_dual[constr.constrName][t].append(constr.PI)
                 if query_stage_cost:
                     stage_cost[t][i] = MSP._get_stage_cost(m, t)
                 ub[j] += MSP._get_stage_cost(m, t)
@@ -181,6 +190,7 @@ class Evaluation(_Evaluation):
             self.CI = compute_CI(ub, percentile)
         self._compute_gap()
         self.solution = {k: pandas.DataFrame(v) for k, v in solution.items()}
+        self.solution_dual = {k: pandas.DataFrame(v) for k, v in solution_dual.items()}
         if query_stage_cost:
             self.stage_cost = pandas.DataFrame(stage_cost)
 
@@ -190,6 +200,7 @@ class EvaluationTrue(Evaluation):
             self,
             n_simulations,
             query=None,
+            query_dual=None,
             query_stage_cost=False,
             random_state=None,
             percentile=95):
@@ -202,6 +213,9 @@ class EvaluationTrue(Evaluation):
 
         query: list, optional (default=None)
             The names of variables that are intended to query.
+
+        query_dual: list, optional (default=None)
+            The names of constraints whose dual variables are intended to query.
 
         percentile: float, optional (default=95)
             The percentile used to compute the confidence interval.
@@ -230,6 +244,7 @@ class EvaluationTrue(Evaluation):
             return super().run(
                 n_simulations=n_simulations,
                 query=query,
+                query_dual=query_dual,
                 query_stage_cost=query_stage_cost,
                 percentile=percentile,
                 random_state=random_state,
@@ -247,10 +262,12 @@ class EvaluationTrue(Evaluation):
                     dist[:,idx] = numpy.sum(temp**2, axis=1)
                 label_all[:,t] = numpy.argmin(dist,axis=1)
         query = [] if query is None else list(query)
+        query_dual = [] if query_dual is None else list(query_dual)
         ub = [0] * n_simulations
         if query_stage_cost:
             stage_cost = [[0 for _ in range(n_simulations)] for _ in range(MSP.T)]
         solution = {item: [[] for _ in range(MSP.T)] for item in query}
+        solution_dual = {item: [[] for _ in range(MSP.T)] for item in query_dual}
         # forward Sampling
         for j in range(n_simulations):
             # Markov chain uncertainty state
@@ -300,6 +317,9 @@ class EvaluationTrue(Evaluation):
                 for var in m.getVars():
                     if var.varName in query:
                         solution[var.varName][t].append(var.X)
+                for constr in m.getConstrs():
+                    if constr.constrName in query_dual:
+                        solution_dual[constr.constrName][t].append(constr.PI)
                 if query_stage_cost:
                     stage_cost[t].append(MSP._get_stage_cost(m, t))
                 ub[j] += MSP._get_stage_cost(m, t)
@@ -309,6 +329,7 @@ class EvaluationTrue(Evaluation):
             #! end time loop
         #! forward Sampling
         self.solution = {k: pandas.DataFrame(v) for k, v in solution.items()}
+        self.solution_dual = {k: pandas.DataFrame(v) for k, v in solution_dual.items()}
         if query_stage_cost:
             self.stage_cost = pandas.DataFrame(stage_cost)
         self.pv = ub

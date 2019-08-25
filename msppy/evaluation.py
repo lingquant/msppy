@@ -18,6 +18,9 @@ class _Evaluation(object):
 
     Attributes
     ----------
+    db: list
+        The deterministic bounds.
+
     pv: list
         The simulated policy values.
 
@@ -37,6 +40,18 @@ class _Evaluation(object):
     solution: dataframe
         The solution of queried variables.
 
+    n_sample_paths: int
+        The number of sample paths to evaluate policy.
+
+    sample_paths_idx: list
+        The index list of exhaustive sample paths if simulation is turned off.
+
+    markovian_samples:
+        The simulated Markovian type samples.
+
+    markovian_idx: list
+        The Markov state that is the closest to the markovian_samples.
+
     Methods
     -------
     run:
@@ -51,6 +66,10 @@ class _Evaluation(object):
         self.gap = None
         self.stage_cost = None
         self.solution = None
+        self.n_sample_paths = None
+        self.sample_path_idx = None
+        self.markovian_idx = None
+        self.markovian_samples = None
 
     def _compute_gap(self):
         try:
@@ -67,8 +86,9 @@ class _Evaluation(object):
         except ZeroDivisionError:
             self.gap = 'nan'
 
-class Evaluation(_Evaluation):
-    __doc__ = _Evaluation.__doc__
+    def _compute_sample_path_idx_and_markovian_path(self):
+        pass
+
     def run(
             self,
             n_simulations,
@@ -77,8 +97,7 @@ class Evaluation(_Evaluation):
             query_dual=None,
             query_stage_cost=False,
             random_state=None,):
-        """Run a Monte Carlo simulation to evaluate the policy on the
-        approximation model.
+        """Run a Monte Carlo simulation to evaluate the policy.
 
         Parameters
         ----------
@@ -107,131 +126,76 @@ class Evaluation(_Evaluation):
             If None, the random number generator is the RandomState
             instance used by numpy.random.
         """
-        random_state = check_random_state(random_state)
+        from msppy.solver import SDDP
+        MSP = self.MSP
+        solver = SDDP(MSP)
+        self.random_state = check_random_state(random_state)
+        self.n_simulations = n_simulations
         query = [] if query is None else list(query)
         query_dual = [] if query_dual is None else list(query_dual)
-        MSP = self.MSP
-        if n_simulations == -1:
-            n_sample_paths, sample_paths = MSP._enumerate_sample_paths(MSP.T-1)
-        else:
-            n_sample_paths = n_simulations
-        ub = [0] * n_sample_paths
-        if query_stage_cost:
-            stage_cost = [
-                [0 for _ in range(n_sample_paths)] for _ in range(MSP.T)
-            ]
-        solution = {item: [[] for _ in range(MSP.T)] for item in query}
-        solution_dual = {item: [[] for _ in range(MSP.T)] for item in query_dual}
-        # forward Sampling
-        for j in range(n_sample_paths):
-            if n_simulations == -1:
-                sample_path = sample_paths[j]
-            state = 0
-            # time loop
-            for t in range(MSP.T):
-                if MSP.n_Markov_states == 1:
-                    m = MSP.models[t]
-                else:
-                    if n_simulations == -1:
-                        m = MSP.models[t][sample_path[1][t]]
-                    else:
-                        if t == 0:
-                            m = MSP.models[t][0]
-                        else:
-                            state = random_state.choice(
-                                range(MSP.n_Markov_states[t]),
-                                p=MSP.transition_matrix[t][state],
-                            )
-                            m = MSP.models[t][state]
-                if t > 0:
-                    m._update_link_constrs(forward_solution)
-                    if MSP.n_Markov_states == 1:
-                        scenario_index = (
-                            sample_path[t]
-                            if n_simulations == -1
-                            else rand_int(
-                                m.n_samples, random_state, m.probability
-                            )
-                        )
-                    else:
-                        scenario_index = (
-                            sample_path[0][t]
-                            if n_simulations == -1
-                            else rand_int(
-                                m.n_samples, random_state, m.probability
-                            )
-                        )
-                    m._update_uncertainty(scenario_index)
-                m.optimize()
-                if m.status not in [2,11]:
-                    m.write_infeasible_model("evaluation_" + str(m.modelName))
-                forward_solution = MSP._get_forward_solution(m, t)
-                for var in m.getVars():
-                    if var.varName in query:
-                        solution[var.varName][t].append(var.X)
-                for constr in m.getConstrs():
-                    if constr.constrName in query_dual:
-                        solution_dual[constr.constrName][t].append(constr.PI)
-                if query_stage_cost:
-                    stage_cost[t][i] = MSP._get_stage_cost(m, t)
-                ub[j] += MSP._get_stage_cost(m, t)
-            #! time loop
-        #! forward Sampling
-        self.pv = ub
-        if n_simulations == -1:
+        query_stage_cost = query_stage_cost
+        self._compute_sample_path_idx_and_markovian_path()
+        self.pv = numpy.zeros(self.n_sample_paths)
+        self.stage_cost = numpy.zeros((MSP.T,self.n_sample_paths))
+        self.solution = {
+            item: numpy.full((MSP.T,self.n_sample_paths), numpy.nan)
+            for item in query
+        }
+        self.solution_dual = {
+            item: numpy.full((MSP.T,self.n_sample_paths), numpy.nan)
+            for item in query_dual
+        }
+        for j in range(self.n_sample_paths):
+            sample_path_idx = (self.sample_path_idx[j]
+                if self.sample_path_idx is not None else None)
+            markovian_idx = (self.markovian_idx[j]
+                if self.markovian_idx is not None else None)
+            markovian_samples = (self.markovian_samples[j]
+                if self.markovian_samples is not None else None)
+            result = solver._forward(
+                random_state=self.random_state,
+                sample_path_idx=sample_path_idx,
+                markovian_idx=markovian_idx,
+                markovian_samples=markovian_samples,
+                query=query,
+                query_dual=query_dual,
+                query_stage_cost=query_stage_cost
+            )
+            for item in query:
+                self.solution[item][:,j] = result['solution'][item]
+            for item in query_dual:
+                self.solution_dual[item][:,j] = result['solution_dual'][item]
+            if query_stage_cost:
+                self.stage_cost[:,j] = result['stage_cost'][item]
+            self.pv[j] = result['pv']
+        if self.n_simulations == -1:
             self.epv = numpy.dot(
                 ub,
                 [
                     MSP._compute_weight_sample_path(sample_paths[j])
-                    for j in range(n_sample_paths)
+                    for j in range(self.n_sample_paths)
                 ],
             )
-        if n_simulations not in [-1,1]:
-            self.CI = compute_CI(ub, percentile)
+        if self.n_simulations not in [-1,1]:
+            self.CI = compute_CI(self.pv, percentile)
         self._compute_gap()
-        self.solution = {k: pandas.DataFrame(v) for k, v in solution.items()}
-        self.solution_dual = {k: pandas.DataFrame(v) for k, v in solution_dual.items()}
+        self.solution = {k: pandas.DataFrame(v) for k, v in self.solution.items()}
+        self.solution_dual = {k: pandas.DataFrame(v) for k, v in self.solution_dual.items()}
         if query_stage_cost:
-            self.stage_cost = pandas.DataFrame(stage_cost)
+            self.stage_cost = pandas.DataFrame(self.stage_cost)
+
+class Evaluation(_Evaluation):
+    __doc__ = _Evaluation.__doc__
+    def _compute_sample_path_idx_and_markovian_path(self):
+        if self.n_simulations == -1:
+            self.n_sample_paths,self.sample_path_idx = MSP._enumerate_sample_paths(MSP.T-1)
+        else:
+            self.n_sample_paths = self.n_simulations
+
 
 class EvaluationTrue(Evaluation):
     __doc__ = Evaluation.__doc__
-    def run(
-            self,
-            n_simulations,
-            query=None,
-            query_dual=None,
-            query_stage_cost=False,
-            random_state=None,
-            percentile=95):
-        """Run a Monte Carlo simulation to evaluate a policy on the true problem.
-
-        Parameters
-        ----------
-        n_simulations: int
-            The number of simulations.
-
-        query: list, optional (default=None)
-            The names of variables that are intended to query.
-
-        query_dual: list, optional (default=None)
-            The names of constraints whose dual variables are intended to query.
-
-        percentile: float, optional (default=95)
-            The percentile used to compute the confidence interval.
-
-        query_stage_cost: bool, optional (default=False)
-            Whether to query values of individual stage costs.
-
-        random_state: int, RandomState instance or None, optional
-            (default=None)
-            If int, random_state is the seed used by the random number
-            generator;
-            If RandomState instance, random_state is the random number
-            generator;
-            If None, the random number generator is the RandomState
-            instance used by numpy.random.
-        """
+    def run(self, *args, **kwargs):
         MSP = self.MSP
         if MSP.__class__.__name__ == 'MSIP':
             MSP._back_binarize()
@@ -241,97 +205,19 @@ class EvaluationTrue(Evaluation):
             and MSP._individual_type == "original"
             and not hasattr(MSP,"bin_stage")
         ):
-            return super().run(
-                n_simulations=n_simulations,
-                query=query,
-                query_dual=query_dual,
-                query_stage_cost=query_stage_cost,
-                percentile=percentile,
-                random_state=random_state,
-            )
-        if n_simulations <= 0:
-            raise ValueError("number of simulations must be bigger than 0")
-        random_state = check_random_state(random_state)
+            return super().run(*args, **kwargs)
+        return _Evaluation.run(self, *args, **kwargs)
+
+    def _compute_sample_path_idx_and_markovian_path(self):
+        MSP = self.MSP
+        self.n_sample_paths = self.n_simulations
         if MSP._type == "Markovian":
-            samples = MSP.Markovian_uncertainty(random_state,n_simulations)
-            label_all = numpy.zeros([n_simulations,MSP.T],dtype=int)
+            self.markovian_samples = MSP.Markovian_uncertainty(
+                self.random_state,self.n_simulations)
+            self.markovian_idx = numpy.zeros([self.n_simulations,MSP.T],dtype=int)
             for t in range(1,MSP.T):
-                dist = numpy.empty([n_simulations,MSP.n_Markov_states[t]])
+                dist = numpy.empty([self.n_simulations,MSP.n_Markov_states[t]])
                 for idx, markov_state in enumerate(MSP.Markov_states[t]):
-                    temp = samples[:,t,:] - markov_state
+                    temp = self.markovian_samples[:,t,:] - markov_state
                     dist[:,idx] = numpy.sum(temp**2, axis=1)
-                label_all[:,t] = numpy.argmin(dist,axis=1)
-        query = [] if query is None else list(query)
-        query_dual = [] if query_dual is None else list(query_dual)
-        ub = [0] * n_simulations
-        if query_stage_cost:
-            stage_cost = [[0 for _ in range(n_simulations)] for _ in range(MSP.T)]
-        solution = {item: [[] for _ in range(MSP.T)] for item in query}
-        solution_dual = {item: [[] for _ in range(MSP.T)] for item in query_dual}
-        # forward Sampling
-        for j in range(n_simulations):
-            # Markov chain uncertainty state
-            if MSP._type == "Markov chain":
-                state = 0
-            # time loop
-            for t in range(MSP.T):
-                # sample Markovian uncertainties
-                if MSP._type == "Markovian":
-                    if t == 0:
-                        m = MSP.models[t][0]
-                    else:
-                        # use the model with the closest markov state
-                        m = MSP.models[t][label_all[j][t]]
-                        # update Markovian uncertainty
-                        m._update_uncertainty_dependent(samples[j][t])
-                elif MSP._type == "Markov chain":
-                    if t == 0:
-                        m = MSP.models[t][0]
-                    else:
-                        state = random_state.choice(
-                            range(MSP.n_Markov_states[t]),
-                            p=MSP.transition_matrix[t][state],
-                        )
-                        m = MSP.models[t][state]
-                else:
-                    m = MSP.models[t]
-                # sample independent uncertainties
-                if t > 0:
-                    if m._type == "continuous":
-                        m._sample_uncertainty(random_state)
-                    elif m._flag_discrete == 1:
-                        m._update_uncertainty_discrete(
-                            rand_int(
-                                m.n_samples_discrete,random_state, m.probability)
-                        )
-                    else:
-                        m._update_uncertainty(
-                            rand_int(m.n_samples, random_state, m.probability)
-                        )
-                    m._update_link_constrs(forward_solution)
-                m.optimize()
-                if m.status not in [2,11]:
-                    m.write_infeasible_model("evaluation_true_" + str(m.modelName))
-                # get solutions
-                forward_solution = MSP._get_forward_solution(m, t)
-                for var in m.getVars():
-                    if var.varName in query:
-                        solution[var.varName][t].append(var.X)
-                for constr in m.getConstrs():
-                    if constr.constrName in query_dual:
-                        solution_dual[constr.constrName][t].append(constr.PI)
-                if query_stage_cost:
-                    stage_cost[t].append(MSP._get_stage_cost(m, t))
-                ub[j] += MSP._get_stage_cost(m, t)
-                if MSP._type == "Markovian":
-                    m._update_uncertainty_dependent(
-                        MSP.Markov_states[t][label_all[j][t]])
-            #! end time loop
-        #! forward Sampling
-        self.solution = {k: pandas.DataFrame(v) for k, v in solution.items()}
-        self.solution_dual = {k: pandas.DataFrame(v) for k, v in solution_dual.items()}
-        if query_stage_cost:
-            self.stage_cost = pandas.DataFrame(stage_cost)
-        self.pv = ub
-        if n_simulations != 1:
-            self.CI = compute_CI(ub, percentile)
+                self.markovian_idx[:,t] = numpy.argmin(dist,axis=1)

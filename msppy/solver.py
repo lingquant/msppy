@@ -63,18 +63,18 @@ class SDDP(object):
         use SDDP algorithm to solve a MSLP instance.
     """
 
-    def __init__(self, MSP):
+    def __init__(self, MSP, reset=True):
         self.db = []
         self.pv = []
         self.cut_type = ["B"]
         self.cut_type_list = [["B"] for t in range(MSP.T-1)]
-        MSP._reset()
+        if reset:
+            MSP._reset()
         self.MSP = MSP
         self.iteration = 0
         self.n_processes = 1
         self.n_steps = 1
         self.percentile = 95
-        self.start = 0
 
     def __repr__(self):
         return (
@@ -205,7 +205,7 @@ class SDDP(object):
             the cut coefficients and rhs.
         """
         MSP = self.MSP
-        for t in range(MSP.T-1, self.start, -1):
+        for t in range(MSP.T-1, 0, -1):
             models = (
                 [MSP.models[t]]
                 if MSP.n_Markov_states == 1
@@ -226,6 +226,11 @@ class SDDP(object):
                 )
                 objLP[k] -= numpy.dot(gradLP[k], forward_solution[t-1])
             self._add_and_store_cuts(t, objLP, gradLP, cuts, "B", j)
+            self.add_cuts_additional_procedure(t, objLP, gradLP, cuts, "B", j)
+
+    def add_cuts_additional_procedure(self, t, rhs, grad, cuts=None,
+            cut_type=None, j=None):
+        pass
 
     def _SDDP_single(self):
         """A single serial SDDP step. Returns the policy value."""
@@ -256,6 +261,10 @@ class SDDP(object):
                         for k in range(self.MSP.n_Markov_states[t]):
                             self.MSP.models[t][k]._add_cut(
                                 rhs=cut[k][0], gradient=cut[k][1:])
+        self.add_cut_from_multiprocessing_array_additional_procedure(cuts)
+
+    def add_cut_from_multiprocessing_array_additional_procedure(self, cuts):
+        pass
 
     def _remove_redundant_cut(self, clean_stages):
         for t in clean_stages:
@@ -910,10 +919,118 @@ class SDDiP(SDDP):
         self.cut_type_list = cut_type_list
 
 class SDDP_infinity(SDDP):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.start = -1
+    def __init__(self, MSP, *args, **kwargs):
+        super().__init__(MSP, *args, **kwargs)
+        MSP = self.MSP
+        M = (
+            [MSP.models[-1]]
+            if type(MSP.models[-1]) != list
+            else MSP.models[-1]
+        )
+        for m in M:
+            m._set_up_CTG(discount=MSP.discount, bound=MSP.bound)
+            m.update()
 
+    def add_cuts_additional_procedure(
+        self, t, rhs, grad, cuts=None, cut_type=None, j=None
+    ):
+        """Store cut information (rhs and grad) to cuts for the j th step, for cut
+        type cut_type and for stage t."""
+        MSP = self.MSP
+        if MSP.n_Markov_states == 1:
+            if t == 1:
+                MSP.models[-1]._add_cut(
+                    rhs[0],
+                    grad[0]
+                )
+        else:
+            raise NotImplementedError
+
+    def add_cut_from_multiprocessing_array_additional_procedure(self, cuts):
+        for cut_type in self.cut_type_list[0]:
+            for cut in cuts[0][cut_type]:
+                if self.MSP.n_Markov_states == 1:
+                    self.MSP.models[-1]._add_cut(
+                        rhs=cut[0],
+                        gradient=cut[1:]
+                    )
+                else:
+                    raise NotImplementedError
+
+    def _forward(
+            self,
+            random_state=None,
+            sample_path_idx=None,
+            markovian_idx=None,
+            markovian_samples=None,
+            query=None,
+            query_dual=None,
+            query_stage_cost=None):
+        """Single forward step. """
+        MSP = self.MSP
+        T = MSP.n_periodical_stages
+        forward_solution = [None for _ in range(T)]
+        pv = 0
+        query = [] if query is None else list(query)
+        query_dual = [] if query_dual is None else list(query_dual)
+        solution = {item: numpy.full(T,numpy.nan) for item in query}
+        solution_dual = {item: numpy.full(T,numpy.nan) for item in query_dual}
+        stage_cost = numpy.full(T,numpy.nan)
+        # time loop
+        for t in range(T):
+            idx = t%MSP.T if (t%MSP.T != 0 or t == 0) else -1
+            if MSP._type == "stage-wise independent":
+                m = MSP.models[idx]
+            else:
+                raise NotImplementedError
+            if t > 0:
+                m._update_link_constrs(forward_solution[t-1])
+                if sample_path_idx is not None:
+                    if MSP._type == "stage-wise independent":
+                        scen = sample_path_idx[t]
+                    else:
+                        NotImplementedError
+                elif m._flag_discrete == 1:
+                    scen = rand_int(
+                        k=m.n_samples_discrete,
+                        probability=m.probability,
+                        random_state=random_state,
+                    )
+                else:
+                    scen = rand_int(
+                        k=m.n_samples,
+                        probability=m.probability,
+                        random_state=random_state,
+                    )
+                m._update_uncertainty(scen)
+            m.optimize()
+            if m.status not in [2,11]:
+                m.write_infeasible_model("forward_" + str(m.modelName))
+            forward_solution[t] = MSP._get_forward_solution(m, t)
+            for var in m.getVars():
+                if var.varName in query:
+                    solution[var.varName][t] = var.X
+            for constr in m.getConstrs():
+                if constr.constrName in query_dual:
+                    solution_dual[constr.constrName][t] = constr.PI
+            if query_stage_cost:
+                stage_cost[t] = MSP._get_stage_cost(m, t)/pow(MSP.discount, t)
+            pv += MSP._get_stage_cost(m, t)
+            if markovian_idx is not None:
+                raise NotImplementedError
+        #! time loop
+        for t in range(1,MSP.T):
+            MSP.models[t]._update_link_constrs(forward_solution[t-1])
+        if query == [] and query_dual == [] and query_stage_cost is None:
+            return forward_solution[:MSP.T], pv
+        else:
+            return {
+                'solution':solution,
+                'soultion_dual':solution_dual,
+                'stage_cost':stage_cost,
+                'forward_solution':forward_solution,
+                'pv':pv
+            }
 
 class Extensive(object):
     """Extensive solver class.
@@ -938,8 +1055,9 @@ class Extensive(object):
         Solve the extensive model
     """
 
-    def __init__(self, MSP):
-        MSP._reset()
+    def __init__(self, MSP, reset=True):
+        if reset:
+            MSP._reset()
         self.MSP = MSP
         self.solving_time = None
         self.construction_time = None

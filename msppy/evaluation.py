@@ -96,7 +96,8 @@ class _Evaluation(object):
             query=None,
             query_dual=None,
             query_stage_cost=False,
-            random_state=None,):
+            random_state=None,
+            n_periodical_stages=None):
         """Run a Monte Carlo simulation to evaluate the policy.
 
         Parameters
@@ -126,9 +127,16 @@ class _Evaluation(object):
             If None, the random number generator is the RandomState
             instance used by numpy.random.
         """
-        from msppy.solver import SDDP
+        from msppy.solver import SDDP,SDDP_infinity
         MSP = self.MSP
-        solver = SDDP(MSP)
+        if MSP.n_periodical_stages is not None:
+            if n_periodical_stages is not None:
+                MSP.n_periodical_stages = n_periodical_stages
+            solver = SDDP_infinity(MSP, reset=False)
+            T = MSP.n_periodical_stages
+        else:
+            solver = SDDP(MSP, reset=False)
+            T = MSP.T
         self.random_state = check_random_state(random_state)
         self.n_simulations = n_simulations
         query = [] if query is None else list(query)
@@ -136,13 +144,13 @@ class _Evaluation(object):
         query_stage_cost = query_stage_cost
         self._compute_sample_path_idx_and_markovian_path()
         self.pv = numpy.zeros(self.n_sample_paths)
-        self.stage_cost = numpy.zeros((MSP.T,self.n_sample_paths))
+        self.stage_cost = numpy.zeros((T,self.n_sample_paths))
         self.solution = {
-            item: numpy.full((MSP.T,self.n_sample_paths), numpy.nan)
+            item: numpy.full((T,self.n_sample_paths), numpy.nan)
             for item in query
         }
         self.solution_dual = {
-            item: numpy.full((MSP.T,self.n_sample_paths), numpy.nan)
+            item: numpy.full((T,self.n_sample_paths), numpy.nan)
             for item in query_dual
         }
         for j in range(self.n_sample_paths):
@@ -166,7 +174,7 @@ class _Evaluation(object):
             for item in query_dual:
                 self.solution_dual[item][:,j] = result['solution_dual'][item]
             if query_stage_cost:
-                self.stage_cost[:,j] = result['stage_cost'][item]
+                self.stage_cost[:,j] = result['stage_cost']
             self.pv[j] = result['pv']
         if self.n_simulations == -1:
             self.epv = numpy.dot(

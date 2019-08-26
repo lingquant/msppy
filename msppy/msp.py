@@ -77,6 +77,7 @@ class MSLP(object):
             sense=1,
             outputFlag=0,
             discount=1.0,
+            n_periodical_stages=None,
             **kwargs):
         if (T < 2
                 or discount > 1
@@ -100,6 +101,7 @@ class MSLP(object):
         self._flag_discrete = 0
         self._flag_update = 0
         self.db = None
+        self.n_periodical_stages = n_periodical_stages
 
     def __repr__(self):
         sense = 'Minimization' if self.sense == 1 else 'Maximization'
@@ -576,7 +578,7 @@ class MSLP(object):
     def _get_stage_cost(self, m, t):
         if self.measure == "risk neutral":
             # the last stage model does not contain the cost-to-go function
-            if t != self.T-1:
+            if m.alpha is not None:
                 return pow(self.discount,t) * (
                     m.objVal - self.discount*m.alpha.X
                 )

@@ -88,6 +88,7 @@ class SDDP(object):
             sample_path_idx=None,
             markovian_idx=None,
             markovian_samples=None,
+            solve_true=False,
             query=None,
             query_dual=None,
             query_stage_cost=None):
@@ -123,24 +124,40 @@ class SDDP(object):
                         m._update_uncertainty_dependent(markovian_samples[t])
             if t > 0:
                 m._update_link_constrs(forward_solution[t-1])
+                # exhaustive evaluation when the sample paths are given
                 if sample_path_idx is not None:
                     if MSP._type == "stage-wise independent":
                         scen = sample_path_idx[t]
                     else:
                         scen = sample_path_idx[0][t]
-                elif m._flag_discrete == 1:
+                    m._update_uncertainty(scen)
+                # true stagewise independent randomness is infinite and solve
+                # for true
+                elif m._type == 'continuous' and solve_true:
+                    m._sample_uncertainty(random_state)
+                # true stagewise independent randomness is large and solve
+                # for true
+                elif m._type == 'discrete' and m._flag_discrete == 1 and solve_true:
                     scen = rand_int(
                         k=m.n_samples_discrete,
                         probability=m.probability,
                         random_state=random_state,
                     )
+                    m._update_uncertainty(scen)
+                # other cases include
+                # 1: true stagewise independent randomness is infinite and solve
+                # for approximation problem
+                # 2: true stagewise independent randomness is large and solve
+                # for approximation problem
+                # 3: true stagewise independent randomness is small. In this
+                # case, true problem and approximation problem are the same.
                 else:
                     scen = rand_int(
                         k=m.n_samples,
                         probability=m.probability,
                         random_state=random_state,
                     )
-                m._update_uncertainty(scen)
+                    m._update_uncertainty(scen)
             m.optimize()
             if m.status not in [2,11]:
                 m.write_infeasible_model("backward_" + str(m.modelName))
@@ -152,7 +169,7 @@ class SDDP(object):
                 if constr.constrName in query_dual:
                     solution_dual[constr.constrName][t] = constr.PI
             if query_stage_cost:
-                stage_cost[t] = MSP._get_stage_cost(m, t)
+                stage_cost[t] = MSP._get_stage_cost(m, t)/pow(MSP.discount, t)
             pv += MSP._get_stage_cost(m, t)
             if markovian_idx is not None:
                 m._update_uncertainty_dependent(MSP.Markov_states[t][markovian_idx[t]])
@@ -919,17 +936,7 @@ class SDDiP(SDDP):
         self.cut_type_list = cut_type_list
 
 class SDDP_infinity(SDDP):
-    def __init__(self, MSP, *args, **kwargs):
-        super().__init__(MSP, *args, **kwargs)
-        MSP = self.MSP
-        M = (
-            [MSP.models[-1]]
-            if type(MSP.models[-1]) != list
-            else MSP.models[-1]
-        )
-        for m in M:
-            m._set_up_CTG(discount=MSP.discount, bound=MSP.bound)
-            m.update()
+    
 
     def add_cuts_additional_procedure(
         self, t, rhs, grad, cuts=None, cut_type=None, j=None
@@ -963,6 +970,7 @@ class SDDP_infinity(SDDP):
             sample_path_idx=None,
             markovian_idx=None,
             markovian_samples=None,
+            solve_true=False,
             query=None,
             query_dual=None,
             query_stage_cost=None):
@@ -978,31 +986,47 @@ class SDDP_infinity(SDDP):
         stage_cost = numpy.full(T,numpy.nan)
         # time loop
         for t in range(T):
-            idx = t%MSP.T if (t%MSP.T != 0 or t == 0) else -1
+            idx = t%(MSP.T-1) if (t%(MSP.T-1) != 0 or t == 0) else -1
             if MSP._type == "stage-wise independent":
                 m = MSP.models[idx]
             else:
                 raise NotImplementedError
             if t > 0:
                 m._update_link_constrs(forward_solution[t-1])
+                # exhaustive evaluation when the sample paths are given
                 if sample_path_idx is not None:
                     if MSP._type == "stage-wise independent":
                         scen = sample_path_idx[t]
                     else:
-                        NotImplementedError
-                elif m._flag_discrete == 1:
+                        scen = sample_path_idx[0][t]
+                    m._update_uncertainty(scen)
+                # true stagewise independent randomness is infinite and solve
+                # for true
+                elif m._type == 'continuous' and solve_true:
+                    m._sample_uncertainty(random_state)
+                # true stagewise independent randomness is large and solve
+                # for true
+                elif m._type == 'discrete' and m._flag_discrete == 1 and solve_true:
                     scen = rand_int(
                         k=m.n_samples_discrete,
                         probability=m.probability,
                         random_state=random_state,
                     )
+                    m._update_uncertainty(scen)
+                # other cases include
+                # 1: true stagewise independent randomness is infinite and solve
+                # for approximation problem
+                # 2: true stagewise independent randomness is large and solve
+                # for approximation problem
+                # 3: true stagewise independent randomness is small. In this
+                # case, true problem and approximation problem are the same.
                 else:
                     scen = rand_int(
                         k=m.n_samples,
                         probability=m.probability,
                         random_state=random_state,
                     )
-                m._update_uncertainty(scen)
+                    m._update_uncertainty(scen)
             m.optimize()
             if m.status not in [2,11]:
                 m.write_infeasible_model("forward_" + str(m.modelName))
@@ -1019,10 +1043,30 @@ class SDDP_infinity(SDDP):
             if markovian_idx is not None:
                 raise NotImplementedError
         #! time loop
+        idx = numpy.arange(MSP.T-1)
+
+        # method one
+        # for t in range(1,MSP.T):
+        #     indices = numpy.arange(t-1,T,MSP.T-1)
+        #     n_indices = len(indices)
+        #     idx[t-1] = indices[int(rand_int(
+        #         k=n_indices,
+        #         random_state=random_state,
+        #     ))]
+        #     MSP.models[t]._update_link_constrs(forward_solution[idx[t-1]])
+        # forward_solution_shuffled = [forward_solution[item] for item in idx]
+        # if query == [] and query_dual == [] and query_stage_cost is None:
+        #     return forward_solution_shuffled, pv
+
+        # method two
+        pick_from_two = rand_int(2,random_state)
+        if pick_from_two == 1:
+            idx[0] = MSP.T - 1
         for t in range(1,MSP.T):
-            MSP.models[t]._update_link_constrs(forward_solution[t-1])
+            MSP.models[t]._update_link_constrs(forward_solution[idx[t-1]])
+        forward_solution_shuffled = [forward_solution[item] for item in idx]
         if query == [] and query_dual == [] and query_stage_cost is None:
-            return forward_solution[:MSP.T], pv
+            return forward_solution_shuffled, pv
         else:
             return {
                 'solution':solution,
@@ -1031,6 +1075,21 @@ class SDDP_infinity(SDDP):
                 'forward_solution':forward_solution,
                 'pv':pv
             }
+
+        # method four
+        # for t in range(1,MSP.T):
+        #     MSP.models[t]._update_link_constrs(forward_solution[t-1])
+        # if query == [] and query_dual == [] and query_stage_cost is None:
+        #     return forward_solution[:MSP.T-1], pv
+        # else:
+        #     return {
+        #         'solution':solution,
+        #         'soultion_dual':solution_dual,
+        #         'stage_cost':stage_cost,
+        #         'forward_solution':forward_solution,
+        #         'pv':pv
+        #     }
+
 
 class Extensive(object):
     """Extensive solver class.

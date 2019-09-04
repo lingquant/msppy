@@ -563,17 +563,17 @@ class MSLP(object):
                         m.update()
 
     def _set_up_CTG(self):
-        for t in range(self.T):
-            if t != self.T - 1:
-                # MC model may already do model copies
-                M = (
-                    [self.models[t]]
-                    if type(self.models[t]) != list
-                    else self.models[t]
-                )
-                for m in M:
-                    m._set_up_CTG(discount=self.discount, bound=self.bound)
-                    m.update()
+        T = self.T if self.n_periodical_stages is not None else self.T - 1
+        for t in range(T):
+            # MC model may already do model copies
+            M = (
+                [self.models[t]]
+                if type(self.models[t]) != list
+                else self.models[t]
+            )
+            for m in M:
+                m._set_up_CTG(discount=self.discount, bound=self.bound)
+                m.update()
 
     def _get_stage_cost(self, m, t):
         if self.measure == "risk neutral":
@@ -621,20 +621,20 @@ class MSLP(object):
             The weight of AVaR: \lambda_2,\dots,\lambda_T
             If float, \lambda_2,\dots,\lambda_T will be assigned to the same
             value.
-            If array-like, must be of length T-1.
+            If array-like, must be of length T-1/T.
 
         alpha_: float between 0 and 1/array-like of floats between 0 and 1
             The quantile parameter in value-at-risk: \alpha_2,\dots,\alpha_T
             If float, \alpha_2,\dots,\alpha_T will be assigned to the same
             value.
-            If array-like, must be of length T-1.
+            If array-like, must be of length T-1/T.
         Remark
         ------
             Bigger lambda_ means more risk averse;
             smaller alpha_  means more risk averse.
         """
         if isinstance(lambda_, (abc.Sequence, numpy.ndarray)):
-            if len(lambda_) != self.T-1:
+            if len(lambda_) not in [self.T-1, self.T]:
                 raise ValueError("Length of lambda_ must be T-1!")
             if not all(item <= 1 and item >= 0 for item in lambda_):
                 raise ValueError("lambda_ must be between 0 and 1!")
@@ -642,12 +642,15 @@ class MSLP(object):
         elif isinstance(lambda_, (numbers.Number)):
             if lambda_ > 1 or lambda_ < 0:
                 raise ValueError("lambda_ must be between 0 and 1!")
-            lambda_ = [None] + [lambda_] * (self.T-1)
+            if self.n_periodical_stages is None:
+                lambda_ = [None] + [lambda_] * (self.T-1)
+            else:
+                lambda_ = [None] + [lambda_] * self.T
         else:
             raise TypeError("lambda_ should be float/array-like instead of \
             {}!".format(type(lambda_)))
         if isinstance(alpha_, (abc.Sequence, numpy.ndarray)):
-            if len(alpha_) != self.T-1:
+            if len(alpha_) not in [self.T-1, self.T]:
                 raise ValueError("Length of alpha_ must be T-1!")
             if not all(item <= 1 and item >= 0 for item in alpha_):
                 raise ValueError("alpha_ must be between 0 and 1!")
@@ -655,7 +658,10 @@ class MSLP(object):
         elif isinstance(alpha_, (numbers.Number)):
             if alpha_ > 1 or alpha_ < 0:
                 raise ValueError("alpha_ must be between 0 and 1!")
-            alpha_ = [None] + [alpha_] * (self.T-1)
+            if self.n_periodical_stages is None:
+                alpha_ = [None] + [alpha_] * (self.T-1)
+            else:
+                alpha_ = [None] + [alpha_] * self.T
         else:
             raise TypeError("alpha_ should be float/array-like instead of \
             {}!".format(type(alpha_)))
@@ -678,7 +684,7 @@ class MSLP(object):
                 m.addConstr(self.sense * (p_now-self.bound) >= 0)
                 z = m.getObjective()
                 # additional is \lambda_{t+1}p_t
-                if t != self.T-1:
+                if m.alpha is not None:
                     additional = lambda_[t+1] * p_now
                 else:
                     additional = 0
@@ -687,7 +693,7 @@ class MSLP(object):
                     lb=-gurobipy.GRB.INFINITY,
                     ub=gurobipy.GRB.INFINITY,
                 )
-                alpha = m.alpha if t != self.T-1 else 0.0
+                alpha = m.alpha if m.alpha is not None else 0.0
                 if t > 0:
                     if m.uncertainty_obj != {}:
                         m.addConstr(

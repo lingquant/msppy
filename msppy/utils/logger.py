@@ -27,14 +27,14 @@ class Logger(object):
         n_slots:
             The number of horizontal slots the logger needs
     """
-    def __init__(self, logFile, logToConsole):
+    def __init__(self, logFile, logToConsole, directory):
         name = self.__repr__()
         logger = logging.getLogger(name)
         logger.setLevel(logging.INFO)
         if logger.hasHandlers():
             logger.handlers.clear()
         if logFile != 0:
-            handler = logging.FileHandler(name + ".log", mode="a")
+            handler = logging.FileHandler(directory + name + ".log", mode="a")
             logger.addHandler(handler)
         if logToConsole != 0:
             streamHandler = logging.StreamHandler()
@@ -226,5 +226,5 @@ class LoggerComparison(Logger):
                 "{:>12d}{:>20d}{:>20f}{:>12f}".format(
                     iteration, ref_iteration, diff, time
                 )
-            )            
+            )
         self.time += time

@@ -5,7 +5,7 @@
 """
 from msppy.utils.logger import LoggerSDDP,LoggerEvaluation,LoggerComparison
 from msppy.utils.statistics import check_random_state,rand_int,compute_CI,allocate_jobs
-from msppy.evaluation import Evaluation
+from msppy.evaluation import Evaluation, EvaluationTrue
 import time
 import numpy
 import multiprocessing
@@ -175,7 +175,10 @@ class SDDP(object):
                 m._update_uncertainty_dependent(MSP.Markov_states[t][markovian_idx[t]])
         #! time loop
         if query == [] and query_dual == [] and query_stage_cost is None:
-            return forward_solution, pv
+            return {
+                'forward_solution':forward_solution,
+                'pv':pv
+            }
         else:
             return {
                 'solution':solution,
@@ -253,7 +256,9 @@ class SDDP(object):
         """A single serial SDDP step. Returns the policy value."""
         # random_state is constructed by number of iteration.
         random_state = numpy.random.RandomState(self.iteration)
-        forward_solution, pv = self._forward(random_state)
+        temp = self._forward(random_state)
+        forward_solution = temp['forward_solution']
+        pv = temp['pv']
         self._backward(forward_solution)
         return [pv]
 
@@ -265,7 +270,9 @@ class SDDP(object):
         # of the first job that the current process does
         random_state = numpy.random.RandomState([self.iteration, jobs[0]])
         for j in jobs:
-            forward_solution, pv[j] = self._forward(random_state)
+            temp = self._forward(random_state)
+            forward_solution = temp['forward_solution']
+            pv[j] = temp['pv']
             self._backward(forward_solution, j, lock, cuts)
 
     def _add_cut_from_multiprocessing_array(self, cuts):
@@ -371,13 +378,18 @@ class SDDP(object):
             percentile=95,
             tol_diff=float("-inf"),
             random_state=None,
-            freq_evaluations_true=None,
+            evaluation_true=False,
             freq_comparisons=None,
             n_simulations=3000,
             n_simulations_true=3000,
+            query=None,
+            query_dual=None,
+            query_stage_cost=None,
+            n_periodical_stages=None,
             freq_clean=None,
             logFile=1,
-            logToConsole=1):
+            logToConsole=1,
+            directory=''):
         """Solve approximation model.
 
         Parameters
@@ -458,8 +470,6 @@ class SDDP(object):
         right_end_of_CI = float("inf")
         db_past = MSP.bound
         self.percentile = percentile
-        if MSP.measure != "risk neutral":
-            freq_evaluations = None
         # distinguish pv_sim from pv
         pv_sim_past = None
 
@@ -473,6 +483,7 @@ class SDDP(object):
             logToConsole=logToConsole,
             n_processes=self.n_processes,
             percentile=self.percentile,
+            directory=directory,
         )
         logger_sddp.header()
         if freq_evaluations is not None or freq_comparisons is not None:
@@ -481,6 +492,7 @@ class SDDP(object):
                 percentile=percentile,
                 logFile=logFile,
                 logToConsole=logToConsole,
+                directory=directory,
             )
             logger_evaluation.header()
         if freq_comparisons is not None:
@@ -489,6 +501,7 @@ class SDDP(object):
                 percentile=percentile,
                 logFile=logFile,
                 logToConsole=logToConsole,
+                directory=directory,
             )
             logger_comparison.header()
         try:
@@ -557,15 +570,55 @@ class SDDP(object):
                     or freq_comparisons is not None
                     and self.iteration%freq_comparisons == 0
                 ):
+                    directory = '' if directory is None else directory
                     start = time.time()
                     evaluation = Evaluation(MSP)
                     evaluation.run(
                         n_simulations=n_simulations,
-                        random_state=random_state,
-                        query_stage_cost=False,
+                        query=query,
+                        query_dual=query_dual,
+                        query_stage_cost=query_stage_cost,
                         percentile=percentile,
+                        n_processes=n_processes,
+                        n_periodical_stages=n_periodical_stages
                     )
-                    pandas.DataFrame({'pv':evaluation.pv}).to_csv("evaluation.csv")
+                    pandas.DataFrame(evaluation.pv).to_csv(directory+
+                        "iter_{}_pv.csv".format(self.iteration))
+                    if query is not None:
+                        for item in query:
+                            evaluation.solution[item].to_csv(directory+
+                                "iter_{}_{}.csv".format(self.iteration, item))
+                    if query_dual is not None:
+                        for item in query_dual:
+                            evaluation.solution_dual[item].to_csv(directory+
+                                "iter_{}_{}.csv".format(self.iteration, item))
+                    if query_stage_cost:
+                        evaluation.stage_cost.to_csv(directory+
+                            "iter_{}_stage_cost.csv".format(self.iteration))
+                    if evaluation_true:
+                        evaluationTrue = EvaluationTrue(MSP)
+                        evaluationTrue.run(
+                            n_simulations=n_simulations,
+                            query=query,
+                            query_dual=query_dual,
+                            query_stage_cost=query_stage_cost,
+                            percentile=percentile,
+                            n_processes=n_processes,
+                            n_periodical_stages=n_periodical_stages
+                        )
+                    pandas.DataFrame(evaluationTrue.pv).to_csv(directory+
+                        "iter_{}_pv.csv".format(self.iteration))
+                    if query is not None:
+                        for item in query:
+                            evaluationTrue.solution[item].to_csv(directory+
+                                "iter_{}_{}_true.csv".format(self.iteration, item))
+                    if query_dual is not None:
+                        for item in query_dual:
+                            evaluationTrue.solution_dual[item].to_csv(directory+
+                                "iter_{}_{}_true.csv".format(self.iteration, item))
+                    if query_stage_cost:
+                        evaluationTrue.stage_cost.to_csv(directory+
+                            "iter_{}_stage_cost_true.csv".format(self.iteration))
                     elapsed_time = time.time() - start
                     gap = evaluation.gap
                     if n_simulations == -1:
@@ -936,7 +989,7 @@ class SDDiP(SDDP):
         self.cut_type_list = cut_type_list
 
 class SDDP_infinity(SDDP):
-    
+
 
     def add_cuts_additional_procedure(
         self, t, rhs, grad, cuts=None, cut_type=None, j=None
@@ -1066,13 +1119,16 @@ class SDDP_infinity(SDDP):
             MSP.models[t]._update_link_constrs(forward_solution[idx[t-1]])
         forward_solution_shuffled = [forward_solution[item] for item in idx]
         if query == [] and query_dual == [] and query_stage_cost is None:
-            return forward_solution_shuffled, pv
+            return {
+                'forward_solution':forward_solution_shuffled,
+                'pv':pv
+            }
         else:
             return {
                 'solution':solution,
                 'soultion_dual':solution_dual,
                 'stage_cost':stage_cost,
-                'forward_solution':forward_solution,
+                'forward_solution':forward_solution_shuffled,
                 'pv':pv
             }
 

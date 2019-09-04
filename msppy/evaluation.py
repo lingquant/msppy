@@ -128,14 +128,15 @@ class _Evaluation(object):
 
         from msppy.solver import SDDP, SDDP_infinity
         MSP = self.MSP
-        if MSP.n_periodical_stages is not None:
-            if n_periodical_stages is not None:
-                MSP.n_periodical_stages = n_periodical_stages
-            self.solver = SDDP_infinity(MSP, reset=False)
-            T = MSP.n_periodical_stages
-        else:
+        T = MSP.T
+        if n_periodical_stages is not None:
+            n_periodical_stages_original = MSP.n_periodical_stages
+            MSP.n_periodical_stages = n_periodical_stages
+            T = n_periodical_stages
+        if MSP.n_periodical_stages is None:
             self.solver = SDDP(MSP, reset=False)
-            T = MSP.T
+        else:
+            self.solver = SDDP_infinity(MSP, reset=False)
         self.n_simulations = n_simulations
         query_stage_cost = query_stage_cost
         self._compute_sample_path_idx_and_markovian_path()
@@ -200,6 +201,9 @@ class _Evaluation(object):
             }
         if query_stage_cost:
             self.stage_cost = pandas.DataFrame(numpy.array(stage_cost))
+
+        if n_periodical_stages is not None:
+            MSP.n_periodical_stages = n_periodical_stages_original
 
     def run_single(self, pv, jobs, query=None, query_dual=None,
             query_stage_cost=False, stage_cost=None,

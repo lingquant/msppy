@@ -37,7 +37,7 @@ def exp_MA(array, window):
 def rand_int(k, random_state, probability=None, size=None, replace=None):
     """Randomly generate certain numbers of sample from range(k) with given
     probability with/without replacement"""
-    if probability == None and replace == None:
+    if probability is None and replace is None:
         return random_state.randint(low=0, high=k, size=size)
     else:
         return random_state.choice(a=k, p=probability, size=size, replace=replace)
@@ -123,6 +123,8 @@ def check_Markovian_uncertainty(Markovian_uncertainty, T):
     return dim_Markov_states
 
 def allocate_jobs(n_forward_samples, n_processes):
+    if n_forward_samples - n_processes == 1:
+        return [[i] for i in range(n_processes-1)] + [range(n_processes-1,n_forward_samples)]
     chunk = (
         int(n_forward_samples / n_processes)
         if n_forward_samples % n_processes == 0

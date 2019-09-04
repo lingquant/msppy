@@ -3,10 +3,13 @@
 """
 @author: lingquan
 """
-from msppy.utils.statistics import rand_int,check_random_state,compute_CI
+from msppy.utils.statistics import (rand_int,check_random_state,compute_CI,
+allocate_jobs)
 import pandas
 import time
 import numpy
+import multiprocessing
+
 
 class _Evaluation(object):
     """Evaluation base class.
@@ -70,6 +73,7 @@ class _Evaluation(object):
         self.sample_path_idx = None
         self.markovian_idx = None
         self.markovian_samples = None
+        self.solve_true = False
 
     def _compute_gap(self):
         try:
@@ -96,8 +100,8 @@ class _Evaluation(object):
             query=None,
             query_dual=None,
             query_stage_cost=False,
-            random_state=None,
-            n_periodical_stages=None):
+            n_periodical_stages=None,
+            n_processes=1,):
         """Run a Monte Carlo simulation to evaluate the policy.
 
         Parameters
@@ -118,26 +122,22 @@ class _Evaluation(object):
         percentile: float, optional (default=95)
             The percentile used to compute the confidence interval.
 
-        random_state: int, RandomState instance or None, optional
-            (default=None)
-            If int, random_state is the seed used by the random number
-            generator;
-            If RandomState instance, random_state is the random number
-            generator;
-            If None, the random number generator is the RandomState
-            instance used by numpy.random.
+        random_state: int, optional (default=None)
+            the seed used by the random number
         """
-        from msppy.solver import SDDP,SDDP_infinity
+
+        if n_processes != 1 and (query is not None or query_dual is not None
+            or query_stage_cost): raise NotImplementedError
+        from msppy.solver import SDDP, SDDP_infinity
         MSP = self.MSP
         if MSP.n_periodical_stages is not None:
             if n_periodical_stages is not None:
                 MSP.n_periodical_stages = n_periodical_stages
-            solver = SDDP_infinity(MSP, reset=False)
+            self.solver = SDDP_infinity(MSP, reset=False)
             T = MSP.n_periodical_stages
         else:
-            solver = SDDP(MSP, reset=False)
+            self.solver = SDDP(MSP, reset=False)
             T = MSP.T
-        self.random_state = check_random_state(random_state)
         self.n_simulations = n_simulations
         query = [] if query is None else list(query)
         query_dual = [] if query_dual is None else list(query_dual)
@@ -153,34 +153,30 @@ class _Evaluation(object):
             item: numpy.full((T,self.n_sample_paths), numpy.nan)
             for item in query_dual
         }
-        for j in range(self.n_sample_paths):
-            sample_path_idx = (self.sample_path_idx[j]
-                if self.sample_path_idx is not None else None)
-            markovian_idx = (self.markovian_idx[j]
-                if self.markovian_idx is not None else None)
-            markovian_samples = (self.markovian_samples[j]
-                if self.markovian_samples is not None else None)
-            result = solver._forward(
-                random_state=self.random_state,
-                sample_path_idx=sample_path_idx,
-                markovian_idx=markovian_idx,
-                markovian_samples=markovian_samples,
-                query=query,
-                query_dual=query_dual,
-                query_stage_cost=query_stage_cost
-            )
-            for item in query:
-                self.solution[item][:,j] = result['solution'][item]
-            for item in query_dual:
-                self.solution_dual[item][:,j] = result['solution_dual'][item]
-            if query_stage_cost:
-                self.stage_cost[:,j] = result['stage_cost']
-            self.pv[j] = result['pv']
+        self.query = query
+        self.query_dual = query_dual
+        self.query_stage_cost = query_stage_cost
+        if n_processes != 1:
+            jobs = allocate_jobs(self.n_sample_paths, n_processes)
+            pv = multiprocessing.Array("d", [0] * self.n_sample_paths)
+            procs = [None] * n_processes
+            for p in range(n_processes):
+                procs[p] = multiprocessing.Process(
+                    target=self.run_single,
+                    args=(pv, jobs[p])
+                )
+                procs[p].start()
+            for proc in procs:
+                proc.join()
+            self.pv = [item for item in pv]
+        else:
+            self.pv = [0] * self.n_sample_paths
+            self.run_single(self.pv, range(self.n_sample_paths))
         if self.n_simulations == -1:
             self.epv = numpy.dot(
-                ub,
+                pv,
                 [
-                    MSP._compute_weight_sample_path(sample_paths[j])
+                    MSP._compute_weight_sample_path(self.sample_path_idx[j])
                     for j in range(self.n_sample_paths)
                 ],
             )
@@ -192,11 +188,39 @@ class _Evaluation(object):
         if query_stage_cost:
             self.stage_cost = pandas.DataFrame(self.stage_cost)
 
+    def run_single(self, pv, jobs):
+        random_state = numpy.random.RandomState([2**32-1, jobs[0]])
+        for j in jobs:
+            print(j)
+            sample_path_idx = (self.sample_path_idx[j]
+                if self.sample_path_idx is not None else None)
+            markovian_idx = (self.markovian_idx[j]
+                if self.markovian_idx is not None else None)
+            markovian_samples = (self.markovian_samples[j]
+                if self.markovian_samples is not None else None)
+            result = self.solver._forward(
+                random_state=random_state,
+                sample_path_idx=sample_path_idx,
+                markovian_idx=markovian_idx,
+                markovian_samples=markovian_samples,
+                solve_true=self.solve_true,
+                query=self.query,
+                query_dual=self.query_dual,
+                query_stage_cost=self.query_stage_cost
+            )
+            for item in self.query:
+                self.solution[item][:,j] = result['solution'][item]
+            for item in self.query_dual:
+                self.solution_dual[item][:,j] = result['solution_dual'][item]
+            if self.query_stage_cost:
+                self.stage_cost[:,j] = result['stage_cost']
+            pv[j] = result['pv']
+
 class Evaluation(_Evaluation):
     __doc__ = _Evaluation.__doc__
     def _compute_sample_path_idx_and_markovian_path(self):
         if self.n_simulations == -1:
-            self.n_sample_paths,self.sample_path_idx = MSP._enumerate_sample_paths(MSP.T-1)
+            self.n_sample_paths,self.sample_path_idx = self.MSP._enumerate_sample_paths(self.MSP.T-1)
         else:
             self.n_sample_paths = self.n_simulations
 
@@ -219,6 +243,7 @@ class EvaluationTrue(Evaluation):
     def _compute_sample_path_idx_and_markovian_path(self):
         MSP = self.MSP
         self.n_sample_paths = self.n_simulations
+        self.solve_true = True
         if MSP._type == "Markovian":
             self.markovian_samples = MSP.Markovian_uncertainty(
                 self.random_state,self.n_simulations)

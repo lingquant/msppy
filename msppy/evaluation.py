@@ -126,8 +126,6 @@ class _Evaluation(object):
             the seed used by the random number
         """
 
-        if n_processes != 1 and (query is not None or query_dual is not None
-            or query_stage_cost): raise NotImplementedError
         from msppy.solver import SDDP, SDDP_infinity
         MSP = self.MSP
         if MSP.n_periodical_stages is not None:
@@ -139,39 +137,44 @@ class _Evaluation(object):
             self.solver = SDDP(MSP, reset=False)
             T = MSP.T
         self.n_simulations = n_simulations
-        query = [] if query is None else list(query)
-        query_dual = [] if query_dual is None else list(query_dual)
         query_stage_cost = query_stage_cost
         self._compute_sample_path_idx_and_markovian_path()
         self.pv = numpy.zeros(self.n_sample_paths)
-        self.stage_cost = numpy.zeros((T,self.n_sample_paths))
-        self.solution = {
-            item: numpy.full((T,self.n_sample_paths), numpy.nan)
-            for item in query
-        }
-        self.solution_dual = {
-            item: numpy.full((T,self.n_sample_paths), numpy.nan)
-            for item in query_dual
-        }
-        self.query = query
-        self.query_dual = query_dual
-        self.query_stage_cost = query_stage_cost
-        if n_processes != 1:
-            jobs = allocate_jobs(self.n_sample_paths, n_processes)
-            pv = multiprocessing.Array("d", [0] * self.n_sample_paths)
-            procs = [None] * n_processes
-            for p in range(n_processes):
-                procs[p] = multiprocessing.Process(
-                    target=self.run_single,
-                    args=(pv, jobs[p])
-                )
-                procs[p].start()
-            for proc in procs:
-                proc.join()
-            self.pv = [item for item in pv]
-        else:
-            self.pv = [0] * self.n_sample_paths
-            self.run_single(self.pv, range(self.n_sample_paths))
+        stage_cost = solution = solution_dual = None
+        if query_stage_cost:
+            stage_cost = [
+                multiprocessing.RawArray("d",[0] * (T))
+                for _ in range(self.n_sample_paths)
+            ]
+        if query is not None:
+            solution = {
+                item: [
+                    multiprocessing.RawArray("d",[0] * (T))
+                    for _ in range(self.n_sample_paths)
+                ]
+                for item in query
+            }
+        if query_dual is not None:
+            solution_dual = {
+                item: [
+                    multiprocessing.RawArray("d",[0] * (T))
+                    for _ in range(self.n_sample_paths)
+                ]
+                for item in query_dual
+            }
+        jobs = allocate_jobs(self.n_sample_paths, n_processes)
+        pv = multiprocessing.Array("d", [0] * self.n_sample_paths)
+        procs = [None] * n_processes
+        for p in range(n_processes):
+            procs[p] = multiprocessing.Process(
+                target=self.run_single,
+                args=(pv,jobs[p],query,query_dual,query_stage_cost,stage_cost,
+                    solution,solution_dual)
+            )
+            procs[p].start()
+        for proc in procs:
+            proc.join()
+        self.pv = [item for item in pv]
         if self.n_simulations == -1:
             self.epv = numpy.dot(
                 pv,
@@ -183,12 +186,24 @@ class _Evaluation(object):
         if self.n_simulations not in [-1,1]:
             self.CI = compute_CI(self.pv, percentile)
         self._compute_gap()
-        self.solution = {k: pandas.DataFrame(v) for k, v in self.solution.items()}
-        self.solution_dual = {k: pandas.DataFrame(v) for k, v in self.solution_dual.items()}
+        if query is not None:
+            self.solution = {
+                k: pandas.DataFrame(
+                    numpy.array(v)
+                ) for k, v in solution.items()
+            }
+        if query_dual is not None:
+            self.solution_dual = {
+                k: pandas.DataFrame(
+                    numpy.array(v)
+                ) for k, v in solution_dual.items()
+            }
         if query_stage_cost:
-            self.stage_cost = pandas.DataFrame(self.stage_cost)
+            self.stage_cost = pandas.DataFrame(numpy.array(stage_cost))
 
-    def run_single(self, pv, jobs):
+    def run_single(self, pv, jobs, query=None, query_dual=None,
+            query_stage_cost=False, stage_cost=None,
+            solution=None, solution_dual=None):
         random_state = numpy.random.RandomState([2**32-1, jobs[0]])
         for j in jobs:
             print(j)
@@ -204,16 +219,21 @@ class _Evaluation(object):
                 markovian_idx=markovian_idx,
                 markovian_samples=markovian_samples,
                 solve_true=self.solve_true,
-                query=self.query,
-                query_dual=self.query_dual,
-                query_stage_cost=self.query_stage_cost
+                query=query,
+                query_dual=query_dual,
+                query_stage_cost=query_stage_cost
             )
-            for item in self.query:
-                self.solution[item][:,j] = result['solution'][item]
-            for item in self.query_dual:
-                self.solution_dual[item][:,j] = result['solution_dual'][item]
-            if self.query_stage_cost:
-                self.stage_cost[:,j] = result['stage_cost']
+            if query is not None:
+                for item in query:
+                    for i in range(len(solution[item][0])):
+                        solution[item][j][i] = result['solution'][item][i]
+            if query_dual is not None:
+                for item in solution_dual:
+                    for i in range(len(solution_dual[item][0])):
+                        solution_dual[item][j][i] = result['solution_dual'][item][i]
+            if query_stage_cost:
+                for i in range(len(stage_cost[0])):
+                    stage_cost[j][i] = result['stage_cost'][i]
             pv[j] = result['pv']
 
 class Evaluation(_Evaluation):

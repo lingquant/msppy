@@ -210,7 +210,6 @@ class _Evaluation(object):
             solution=None, solution_dual=None):
         random_state = numpy.random.RandomState([2**32-1, jobs[0]])
         for j in jobs:
-            print(j)
             sample_path_idx = (self.sample_path_idx[j]
                 if self.sample_path_idx is not None else None)
             markovian_idx = (self.markovian_idx[j]

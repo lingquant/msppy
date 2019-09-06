@@ -337,7 +337,7 @@ class SDDP(object):
                     cut_type: [multiprocessing.RawArray("d",
                         [0] * (self.MSP.n_states[t]+1))
                         for _ in range(self.n_steps)]
-                    for cut_type in self.cut_type}
+                    for cut_type in self.cut_type_list[t]}
             for t in range(self.MSP.T-1)}
         else:
             cuts = {
@@ -347,7 +347,7 @@ class SDDP(object):
                             [0] * (self.MSP.n_states[t]+1))
                             for _ in range(self.MSP.n_Markov_states[t])]
                         for _ in range(self.n_steps)]
-                    for cut_type in self.cut_type}
+                    for cut_type in self.cut_type_list[t]}
             for t in range(self.MSP.T-1)}
 
         pv = multiprocessing.Array("d", [0] * self.n_steps)
@@ -607,7 +607,7 @@ class SDDP(object):
                             n_periodical_stages=n_periodical_stages
                         )
                     pandas.DataFrame(evaluationTrue.pv).to_csv(directory+
-                        "iter_{}_pv.csv".format(self.iteration))
+                        "iter_{}_pv_true.csv".format(self.iteration))
                     if query is not None:
                         for item in query:
                             evaluationTrue.solution[item].to_csv(directory+
@@ -947,10 +947,13 @@ class SDDiP(SDDP):
             #! Markov states iteration ends
             if "B" in self.cut_type_list[t-1]:
                 self._add_and_store_cuts(t, objLP, gradLP, cuts, "B", j)
+                self.add_cuts_additional_procedure(t, objLP, gradLP, cuts, "B", j)
             if "SB" in self.cut_type_list[t-1]:
                 self._add_and_store_cuts(t, objSB, gradLP, cuts, "SB", j)
+                self.add_cuts_additional_procedure(t, objSB, gradLP, cuts, "SB", j)
             if "LG" in self.cut_type_list[t-1]:
                 self._add_and_store_cuts(t, objLG, gradLG, cuts, "LG", j)
+                self.add_cuts_additional_procedure(t, objLG, gradLG, cuts, "LG", j)
         #! Time iteration ends
 
     def _compute_cut_type_by_iteration(self):
@@ -1145,6 +1148,9 @@ class SDDP_infinity(SDDP):
         #         'forward_solution':forward_solution,
         #         'pv':pv
         #     }
+
+class SDDiP_infinity(SDDP_infinity, SDDiP):
+    pass
 
 
 class Extensive(object):

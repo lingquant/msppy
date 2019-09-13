@@ -298,16 +298,16 @@ class MSLP(object):
                 else:
                     if m._flag_discrete == 1:
                         self._individual_type = "discretized"
-                if m.n_states != n_states:
-                    raise Exception(
-                        "Dimension of state space must be same for all stages!"
-                    )
+                # if m.n_states != n_states:
+                #     raise Exception(
+                #         "Dimension of state space must be same for all stages!"
+                #     )
         if self._type == "Markovian" and self._flag_discrete == 0:
             raise Exception(
                 "Stage-wise dependent continuous uncertainties "+
                 "must be discretized!"
             )
-        self.n_states = [n_states] * self.T
+        self.n_states = [self.models[t].n_states for t in range(self.T)]
 
     def _reset(self):
         """Reset the program to its original state."""

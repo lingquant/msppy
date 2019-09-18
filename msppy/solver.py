@@ -160,7 +160,7 @@ class SDDP(object):
                     m._update_uncertainty(scen)
             m.optimize()
             if m.status not in [2,11]:
-                m.write_infeasible_model("backward_" + str(m.modelName))
+                m.write_infeasible_model("forward_" + str(m.modelName))
             forward_solution[t] = MSP._get_forward_solution(m, t)
             for var in m.getVars():
                 if var.varName in query:
@@ -259,10 +259,12 @@ class SDDP(object):
         temp = self._forward(random_state)
         forward_solution = temp['forward_solution']
         pv = temp['pv']
+        self._deregularize()
         self._backward(forward_solution)
+        self.forward_solution = forward_solution
         return [pv]
 
-    def _SDDP_single_process(self, pv, jobs, lock, cuts):
+    def _SDDP_single_process(self, pv, jobs, lock, cuts, forward_solution):
         """Multiple SDDP jobs by single process. pv will store the policy values.
         cuts will store the cut information. Have not use the lock parameter so
         far."""
@@ -271,9 +273,70 @@ class SDDP(object):
         random_state = numpy.random.RandomState([self.iteration, jobs[0]])
         for j in jobs:
             temp = self._forward(random_state)
-            forward_solution = temp['forward_solution']
+            solution = temp['forward_solution']
             pv[j] = temp['pv']
-            self._backward(forward_solution, j, lock, cuts)
+            self._deregularize()
+            self._backward(solution, j, lock, cuts)
+            if j == jobs[-1]:
+                for t in range(self.MSP.T-1):
+                    for i in range(self.MSP[t].n_states):
+                        forward_solution[t][i] = solution[t][i]
+
+    def _regularize(self):
+        if self.regularization_param == 0 or self.iteration == 0: return
+        MSP = self.MSP
+        for t in range(MSP.T):
+            m = MSP.models[t]
+            regularization = m.addVar(
+                lb=0,
+                obj=MSP.sense*self.regularization_param*0.99**self.iteration,
+                name='regularization_{}'.format(self.iteration)
+            )
+            if self.regularization_type == 'L1':
+                m.addConstrs(
+                    (regularization >= m.states[i] - self.forward_solution[t][i]
+                    for i in range(m.n_states)),
+                    name = 'regularization_{}'.format(self.iteration)
+                )
+            elif self.regularization_type == 'L2':
+                m.addQConstr(
+                    regularization -
+                    gurobipy.QuadExpr(
+                        gurobipy.quicksum([
+                            m.states[i] * m.states[i]
+                            - m.states[i] * 2 * self.forward_solution[t][i]
+                            for i in range(m.n_states)
+                        ])
+                    )
+                    >=0,
+                    name = 'regularization_{}'.format(self.iteration)
+                )
+            else:
+                raise NotImplementedError
+            m.update()
+
+
+    def _deregularize(self):
+        if self.regularization_param == 0 or self.iteration == 0: return
+        MSP = self.MSP
+        for t in range(MSP.T):
+            m = MSP.models[t]
+            if self.regularization_type == 'L1':
+                for i in range(m.n_states):
+                    constr = m.getConstrByName(
+                        'regularization_{}[{}]'.format(self.iteration-1,i))
+                    if constr:
+                        m.remove(constr)
+            elif self.regularization_type == 'L2':
+                constrs = m.getQConstrs()
+                for constr in constrs:
+                    m.remove(constr)
+                var = m.getVarByName('regularization_{}'.format(self.iteration-1))
+                if var:
+                    var.obj = 0
+            else:
+                raise NotImplementedError
+            m.update()
 
     def _add_cut_from_multiprocessing_array(self, cuts):
         for t in range(self.MSP.T-1):
@@ -352,17 +415,21 @@ class SDDP(object):
 
         pv = multiprocessing.Array("d", [0] * self.n_steps)
         lock = multiprocessing.Lock()
+        forward_solution = [multiprocessing.Array(
+            "d",[0] * self.MSP[t].n_states) for t in range(self.MSP.T)]
 
         for p in range(self.n_processes):
             procs[p] = multiprocessing.Process(
                 target=self._SDDP_single_process,
-                args=(pv, self.jobs[p], lock, cuts),
+                args=(pv, self.jobs[p], lock, cuts, forward_solution),
             )
             procs[p].start()
         for proc in procs:
             proc.join()
 
         self._add_cut_from_multiprocessing_array(cuts)
+        self._deregularize()
+        self.forward_solution = [list(item) for item in forward_solution]
 
         return [item for item in pv]
 
@@ -389,7 +456,9 @@ class SDDP(object):
             freq_clean=None,
             logFile=1,
             logToConsole=1,
-            directory=''):
+            directory='',
+            regularization_type='L2',
+            regularization_param=0):
         """Solve approximation model.
 
         Parameters
@@ -470,6 +539,8 @@ class SDDP(object):
         right_end_of_CI = float("inf")
         db_past = MSP.bound
         self.percentile = percentile
+        self.regularization_type = regularization_type
+        self.regularization_param = regularization_param
         # distinguish pv_sim from pv
         pv_sim_past = None
 
@@ -537,6 +608,7 @@ class SDDP(object):
                 if self.n_processes != 1:
                     CI = compute_CI(pv,percentile)
                 self.pv.append(pv)
+                self._regularize()
 
                 if self.iteration >= 1:
                     if db_past == db:
@@ -564,6 +636,9 @@ class SDDP(object):
                         CI=CI,
                         time=elapsed_time,
                     )
+                if self.iteration > 10 and self.iteration % 10 == 1:
+                    for t in range(self.MSP.T):
+                        self.MSP.models[t].reset()
                 if (
                     freq_evaluations is not None
                     and self.iteration%freq_evaluations == 0

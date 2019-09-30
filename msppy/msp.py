@@ -27,17 +27,21 @@ class MSLP(object):
         sense) for each stage problem.
         Default value is -1B for maximization problem and 1B for maximation problem.
 
-    sense: +1/-1, optional (default=1)
+    sense: +1/-1, optional, default=1
         The optimization sense. +1 indicates minimization and -1 indicates
         maximization.
 
-    outputFlag: 1/0, optional (default=0)
+    outputFlag: 1/0, optional, default=0
         Log model solving process or not.
 
     discount: float between 0(exclusive) and 1(inclusive), optional (default=1)
         The discount factor used to compute present value.
 
-    n_periodical_stages: int, optional (default=None)
+    ctg: bool, optional, default=0
+        Whether to create ctg variable alpha for each stage (except the last stage)
+        when initialization.
+
+    n_periodical_stages: int, optional, default=None
         Specify the length of a period for infinite horizon problem. Default
         value indicates a finite horizon problem.
 
@@ -64,6 +68,7 @@ class MSLP(object):
             sense=1,
             outputFlag=0,
             discount=1.0,
+            ctg=False,
             n_periodical_stages=None,
             **kwargs):
         if (T < 2
@@ -88,6 +93,7 @@ class MSLP(object):
         self._flag_discrete = 0
         self._flag_update = 0
         self.db = None
+        if ctg: self._set_up_CTG()
         self.n_periodical_stages = n_periodical_stages
 
     def __repr__(self):

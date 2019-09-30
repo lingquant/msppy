@@ -1,9 +1,0 @@
-This tutorial deals with the Brazilian interconnected power system. I direct readers to go through quick_start.ipynb first, in which I give a brief description of the problem and a simple implementation. I simply regard the historical data as the whole sample space. Though it is an unrealistic assumption, the purpose of the notebook is to get you familiar with the problem.
-
-The inflow energy really should be a Markovian process. In the TS_modelling.ipynb, I fit a time series model to the historical data. The coefficients of the time series equations are output to the data folder. In order to incorporate this model into our optimization problem, two approaches are implemented -- time series approach and Markov chain approach.
-
-The time series approach is implemented in the TS.py, in which I add additional state variables and reformulate the problem into a stage-wise independent form.
-
-For Markov chain approaches, the process of discretization is quite involved. One can certainly make discretization and solve the problem in the same interface using the msppy package (e.g., the portfolio optimization quick start example), but it is recommended to seperate the routine for large-scale problem (just in case messing things up). In the Markov_chain_approximation.ipynb, I briefly illustrate the Markov chain approximation techniques by just training using a small number of sample paths and provide visualization of the result. The Markov chain can be actually trained by millions of sample paths. For your convenience, I have pre-trained five MCs and output them in the data/MC directory. The five MCs correspond to the first five model in my paper. Finally, the Markov chain approach is implemented in the Markovian.py.
-
-Implementation results are in the result folder. The seven subfolders correspond to the seven model discussed in my paper. 

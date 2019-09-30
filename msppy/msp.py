@@ -93,8 +93,8 @@ class MSLP(object):
         self._flag_discrete = 0
         self._flag_update = 0
         self.db = None
-        if ctg: self._set_up_CTG()
         self.n_periodical_stages = n_periodical_stages
+        if ctg: self._set_up_CTG()
 
     def __repr__(self):
         sense = 'Minimization' if self.sense == 1 else 'Maximization'

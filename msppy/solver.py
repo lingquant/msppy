@@ -23,7 +23,7 @@ class SDDP(object):
         Whether to reset models (remove all cuts).
     """
 
-    def __init__(self, MSP, reset=True):
+    def __init__(self, MSP, reset=False):
         self.db = []
         self.pv = []
         self.cut_type = ["B"]
@@ -1213,7 +1213,7 @@ class Extensive(object):
         The time cost in constructing extensive model
     """
 
-    def __init__(self, MSP, reset=True):
+    def __init__(self, MSP, reset=False):
         if reset:
             MSP._reset()
             MSP._flag_update = False

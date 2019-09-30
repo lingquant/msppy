@@ -1,12 +1,8 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-@author: lingquan
-"""
 import gurobipy
 import numpy
 from msppy.utils.statistics import rand_int,check_random_state
 from msppy.utils.exception import SampleSizeError,DistributionError
+from msppy.utils.measure import Expectation
 import msppy.utils.copy as deepcopy
 from collections import abc
 from numbers import Number
@@ -17,6 +13,9 @@ import math
 class StochasticModel(object):
     """Stochastic Gurobi model class. Methods on an ordinary Gurobi model
     object can be referred by help(Model). Unique methods on this object are:
+
+    Methods
+    -------
 
     addStateVar:
         add a state variable to the model. Return the added state
@@ -95,6 +94,8 @@ class StochasticModel(object):
         self._flag_discrete = 0
         # collection of all specified dim indices of Markovian uncertainties
         self.Markovian_dim_index = []
+        # risk measure
+        self.measure = Expectation
 
     def __getattr__(self, name):
         try:
@@ -438,25 +439,27 @@ class StochasticModel(object):
         return uncertainty_dependent
 
     def copy(self):
-        """Create a deepcopy of a stochastic model.
+        """
+        Create a deepcopy of a stochastic model.
 
         Returns
         -------
-            The copied StochasticModel object.
+        The copied StochasticModel object.
         """
         return self._copy(self._model)
 
     def relax(self):
-        """Return the relaxed version of the stochastic MIP model.
+        """
+        Return the relaxed version of the stochastic MIP model.
 
         Returns
         -------
-            a new relaxed StochasticModel object
+        a new relaxed StochasticModel object
 
         Notes
         -----
-            If the model is already continuous, then this method produces the
-            same result as cloning the model.
+        If the model is already continuous, then this method produces the
+        same result as cloning the model.
         """
         return self._copy(self._model.relax())
 
@@ -471,55 +474,57 @@ class StochasticModel(object):
             uncertainty=None,
             uncertainty_dependent=None
     ):
-        """Add state variables in bulk. Work similar to addVars() method,
+        """
+        Add state variables in bulk. Work similar to addVars() method,
         with additional optional parameters uncertainty and uncertainty_dependent.
 
         Parameters
         ----------
-            *indices, lb, ub, obj, vtype, name:
-                work the same as the gurobipy.addVars() method.
+        *indices, lb, ub, obj, vtype, name:
+            work the same as the gurobipy.addVars() method.
 
-            uncertainty: array-like (default=None)
-                The scenarios of stage-wise independent uncertain objective
-                coefficients.
+        uncertainty: array-like, optional, default=None,
+            The scenarios of stage-wise independent uncertain objective
+            coefficients.
 
-            uncertainty: callable (default=None)
-                The multivariate random variable generator of stage-wise
-                independent uncertain objective coefficients. It must take
-                numpy RandomState as its only argument.
+        uncertainty: callable, optional, default=None
+            The multivariate random variable generator of stage-wise
+            independent uncertain objective coefficients. It must take
+            numpy RandomState as its only argument.
 
-            uncertainty_dependent: array-like (default=None)
-                The location index in the stochastic process generator of
-                stage-wise dependent uncertain objective coefficients.
+        uncertainty_dependent: array-like, optional, default=None
+            The location index in the stochastic process generator of
+            stage-wise dependent uncertain objective coefficients.
 
         Returns
         -------
-            a tuple of dicts ({}, {}): (state variables, local_copy variables)
+        a tuple of dicts ({}, {}): (state variables, local_copy variables)
 
         Examples
         --------
-            # stage-wise independent discrete uncertainties
-            now,past = model.addStateVars(
-                2,
-                ub=2.0,
-                uncertainty={[[2,4],[3,5]]}
-            )
-            now,past = model.addStateVars(
-                [(1,2),(2,1)],
-                ub=2.0,
-                uncertainty={[[2,4],[3,5]]}
-            )
+        >>> now,past = model.addStateVars(
+        ...     2,
+        ...     ub=2.0,
+        ...     uncertainty={[[2,4],[3,5]]}
+        ... )
+        >>> now,past = model.addStateVars(
+        ...     [(1,2),(2,1)],
+        ...     ub=2.0,
+        ...     uncertainty={[[2,4],[3,5]]}
+        ... )
 
-            # stage-wise independent continuous uncertainties
-            def f(random_state):
-                return random_state.multivariate_normal(
-                    mean = [0,0],
-                    cov = [[1,0],[0,1]]
-                )
-            now,past = model.addStateVars(2, ub=2.0, uncertainty=f)
+        stage-wise independent continuous uncertain objective coefficients
 
-            # stage-wise independent continuous uncertainties
-            now,past = model.addStateVars(2, ub=2.0, uncertainty_dependent=[1,2])
+        >>> def f(random_state):
+        ...     return random_state.multivariate_normal(
+        ...         mean = [0,0],
+        ...         cov = [[1,0],[0,1]]
+        ...     )
+        >>> now,past = model.addStateVars(2, ub=2.0, uncertainty=f)
+
+        Markovian objective coefficients
+
+        >>> now,past = model.addStateVars(2, ub=2.0, uncertainty_dependent=[1,2])
         """
         state = self._model.addVars(
             *indices, lb=lb, ub=ub, obj=obj, vtype=vtype, name=name
@@ -563,44 +568,46 @@ class StochasticModel(object):
             uncertainty=None,
             uncertainty_dependent=None,
     ):
-        """Add a state variable to the model. Work similar to addVar() method,
+        """
+        Add a state variable to the model. Work similar to addVar() method,
         with additional optional parameters uncertainty and
         uncertainty_dependent.
 
         Parameters
         ----------
-            lb, ub, obj, vtype, name, column:
-                work the same as the addVar() method.
+        lb, ub, obj, vtype, name, column:
+            work the same as the addVar() method.
 
-            uncertainty: array-like (default=None)
-                The scenarios of the stage-wise independent uncertain
-                objective coefficient
+        uncertainty: array-like, optional, default=None
+            The scenarios of the stage-wise independent uncertain
+            objective coefficient
 
-            uncertainty: callable (default=None)
-                The univariate random variable generator of stage-wise
-                independent uncertain objective coefficient. The callable must
-                take numpy.random.
+        uncertainty: callable, optional, default=None
+            The univariate random variable generator of stage-wise
+            independent uncertain objective coefficient. The callable must
+            take numpy.random.
 
-            uncertainty: int (default=None)
-                The location index in the stochastic process generator of the
-                stage-wise dependent uncertain objective coefficient
+        uncertainty: int, optional, default=None
+            The location index in the stochastic process generator of the
+            stage-wise dependent uncertain objective coefficient
 
         Returns
         -------
-            a tuple ( , ): (the created state variable, local copy variable)
+        a tuple ( , ): (the created state variable, local copy variable)
 
         Examples
         --------
-            # stage-wise independent discrete uncertainties
-            now,past = model.addStateVar(ub=2.0, uncertainty=[1,2,3])
+        >>> now,past = model.addStateVar(ub=2.0, uncertainty=[1,2,3])
 
-            # stage-wise independent continuous uncertainties
-            def f(random_state):
-                return random_state.normal(0, 1)
-            now,past = model.addStateVar(ub=2.0, uncertainty=f)
+        stage-wise independent continuous uncertain objective coefficient
 
-            # stage-wise independent continuous uncertainties
-            now,past = model.addStateVar(ub=2.0, uncertainty_dependent=[1,2])
+        >>> def f(random_state):
+        ...     return random_state.normal(0, 1)
+        >>> now,past = model.addStateVar(ub=2.0, uncertainty=f)
+
+        Markovian objective coefficient
+
+        >>> now,past = model.addStateVar(ub=2.0, uncertainty_dependent=[1,2])
         """
         state = self._model.addVar(
             lb=lb, ub=ub, obj=obj, vtype=vtype, name=name, column=column,
@@ -639,63 +646,65 @@ class StochasticModel(object):
             uncertainty=None,
             uncertainty_dependent=None
     ):
-        """Add variables in bulk. Work similar to addVars() method,
+        """
+        Add variables in bulk. Work similar to addVars() method,
         with additional optional parameters uncertainty and uncertainty_dependent.
 
         Parameters
         ----------
-            indices, lb, ub, obj, vtype, name:
-                work the same as the addVars() method.
+        indices, lb, ub, obj, vtype, name:
+            work the same as the addVars() method.
 
-            uncertainty: array-like (default=None)
-                The scenarios of the stage-wise independent uncertain
-                objective coefficients
+        uncertainty: array-like, optional, default=None
+            The scenarios of the stage-wise independent uncertain
+            objective coefficients
 
-            uncertainty: callable (default=None)
-                The multivariate random variable generator of stage-wise
-                independent uncertain objective coefficients. The callable must
-                take numpy RandomState as its only argument.
+        uncertainty: callable, optional, default=None
+            The multivariate random variable generator of stage-wise
+            independent uncertain objective coefficients. The callable must
+            take numpy RandomState as its only argument.
 
-            uncertainty_dependent: array-like (default=None)
-                The locations index in the stochastic process generator of the
-                stage-wise dependent objective coefficients
+        uncertainty_dependent: array-like, optional, default=None
+            The locations index in the stochastic process generator of the
+            stage-wise dependent objective coefficients
 
         Returns
         -------
-            A dictionary of created variables
+        A dictionary of created variables
 
         Examples
         --------
-            # stage-wise independent discrete uncertainties
-            newVars = model.addVars(
-                3,
-                ub=2.0,
-                uncertainty={[[2,4,6],[3,5,7]]}
-            )
-            newVars = model.addVars(
-                [(1,2),(2,1)],
-                ub=2.0,
-                uncertainty={[[2,4],[3,5],[4,6]]}
-            )
+        >>> newVars = model.addVars(
+        ...     3,
+        ...     ub=2.0,
+        ...     uncertainty={[[2,4,6],[3,5,7]]}
+        ... )
+        >>> newVars = model.addVars(
+        ...     [(1,2),(2,1)],
+        ...     ub=2.0,
+        ...     uncertainty={[[2,4],[3,5],[4,6]]}
+        ... )
 
-            # stage-wise independent continuous uncertainties
-            def f(random_state):
-                return random_state.multivariate_normal(
-                    mean = [0,0],
-                    cov = [[1,0],[0,100]]
-                )
-            newVars = model.addVars(
-                2,
-                ub=2.0,
-                uncertainty=f
-            )
+        stage-wise independent continuous uncertain objective coefficients
 
-            # stage-wise independent continuous uncertainties
-            newVars = model.addVars(
-                2,
-                ub=2.0,
-                uncertainty_dependent=[1,2]
-            )
+        >>> def f(random_state):
+        ...     return random_state.multivariate_normal(
+        ...         mean = [0,0],
+        ...         cov = [[1,0],[0,100]]
+        ...     )
+        >>> newVars = model.addVars(
+        ...     2,
+        ...     ub=2.0,
+        ...     uncertainty=f
+        ... )
+
+        Markovian objective coefficients
+
+        >>> newVars = model.addVars(
+        ...     2,
+        ...     ub=2.0,
+        ...     uncertainty_dependent=[1,2]
+        ... )
         """
         var = self._model.addVars(
             *indices, lb=lb, ub=ub, obj=obj, vtype=vtype, name=name
@@ -732,7 +741,9 @@ class StochasticModel(object):
             uncertainty=None,
             uncertainty_dependent=None,
     ):
-        """Add a variable to the model. Work similar to addVar() method,
+        """
+
+        Add a variable to the model. Work similar to addVar() method,
         with additional optional parameters uncertainty and uncertainty_dependent.
 
         Parameters
@@ -740,35 +751,36 @@ class StochasticModel(object):
         lb, ub, obj, vtype, name, column:
             work the same as the addVar() method.
 
-        uncertainty: array-like (default=None)
+        uncertainty: array-like, optional, default=None
             The scenarios of the stage-wise independent uncertain
             objective coefficient
 
-        uncertainty: callable (default=None)
+        uncertainty: callable, optional, default=None
             The univariate random variable generator of stage-wise independent
             uncertain objective coefficient. The callable must take numpy
             RandomState as its only argument.
 
-        uncertainty: int (default=None)
+        uncertainty: int, optional, default=None
             The location index in the sample path generator of the stage-wise
             dependent uncertain objective coefficient
 
         Returns
         -------
-            The created variable
+        The created variable
 
         Examples
         --------
-            # stage-wise independent discrete uncertainties
-            newVar = model.addVar(ub=2.0, uncertainty=[1,2,3])
+        >>> newVar = model.addVar(ub=2.0, uncertainty=[1,2,3])
 
-            # stage-wise independent continuous uncertainties
-            def f(random_state):
-                return random_state.normal(0, 1)
-            newVar = model.addVar(ub=2.0, uncertainty=f)
+        stage-wise independent continuous uncertain objective coefficient
 
-            # stage-wise independent continuous uncertainties
-            newVar = model.addVar(ub=2.0, uncertainty_dependent=[1])
+        >>> def f(random_state):
+        ...     return random_state.normal(0, 1)
+        ... newVar = model.addVar(ub=2.0, uncertainty=f)
+
+        Markovian objective coefficient
+
+        >>> newVar = model.addVar(ub=2.0, uncertainty_dependent=[1])
         """
         var = self._model.addVar(
             lb=lb, ub=ub, obj=obj, vtype=vtype, name=name, column=column
@@ -807,41 +819,44 @@ class StochasticModel(object):
         lhs, sense, rhs, name:
             work the same as the addConstr() method.
 
-        uncertainty: dict (default=None)
+        uncertainty: dict, optional, default=None
             The scenarios/univariate random variable generator of the
             stage-wise independent uncertain constraint coefficient and RHS.
 
-        uncertainty_dependent: dict (default=None)
+        uncertainty_dependent: dict, optional, default=None
             The location index in the sample path genator of the stage-wise
             dependent uncertain constraint coefficient and RHS.
 
         Returns
         -------
-            The created constraint.
+        The created constraint.
 
         Examples
         --------
-            new, past = model.addStateVar(ub=2.0)
+        >>> new, past = model.addStateVar(ub=2.0)
 
-            # stage-wise independent discrete uncertainties
-            newConstr = model.addConstr(
-                new + past == 3.0,
-                uncertainty={'rhs': [1,2,3], new: [3,4,5]}
-            )
-            The above example dictates scenarios of RHS to be [1,2,3] and
-            coefficient of new to be [3,4,5]
+        stage-wise independent finite discrete uncertain rhs/constraint coefficient
 
-            # stage-wise independent & stage-wise dependent continuous
-            uncertainties
-            def f(random_state):
-                return random_state.normal(0, 1)
-            newConstr = model.addConstr(
-                ub=2.0,
-                uncertainty={new: f},
-                uncertainty_dependent = {'rhs': [1]}
-            )
-            The above constraint contains a stage-wise independent uncertainty
-            on the coefficient and a stage-wise dependent uncertainty on the RHS.
+        >>> newConstr = model.addConstr(
+        ...     new + past == 3.0,
+        ...     uncertainty={'rhs': [1,2,3], new: [3,4,5]}
+        ... )
+
+        The above example dictates scenarios of RHS to be [1,2,3] and
+        coefficient of new to be [3,4,5]
+
+        stage-wise independent continuous uncertain rhs/constraint coefficient
+
+        >>> def f(random_state):
+        ...     return random_state.normal(0, 1)
+        >>> newConstr = model.addConstr(
+        ...     ub=2.0,
+        ...     uncertainty={new: f},
+        ...     uncertainty_dependent = {'rhs': [1]}
+        ... )
+
+        The above constraint contains a stage-wise independent uncertain
+        constraint coefficient and a Markovian RHS.
         """
         constr = self._model.addConstr(lhs, sense=sense, rhs=rhs, name=name)
         self._model.update()
@@ -895,48 +910,51 @@ class StochasticModel(object):
         ----------
         generator, name: work the same as the addConstrs() method.
 
-        uncertainty: array-like/callable (default=None)
+        uncertainty: array-like/callable, optional, default=None
             The scenarios/multivariate random variable generator of the
             stage-wise independent uncertain RHS. A generator must take numpy
             RandomState as its only argument.
 
-        uncertainty_dependent: array-like (default=None)
+        uncertainty_dependent: array-like, optional, default=None
             The locations in the sample path generator of the stage-wise
             independent uncertain RHS. A generator must take numpy
             RandomState as its only argument.
 
         Returns
         -------
-            The created constraints
+        The created constraints
 
         Examples
         --------
-            new, past = model.addStateVar(ub=2.0)
+        >>> new, past = model.addStateVar(ub=2.0)
 
-            # stage-wise independent discrete uncertainties
-            newConstrs = model.addConstrs(
-                new[i] + past[i] == 0 for i in range(2),
-                uncertainty=[[1,2],[2,3]]
-            )
-            The above example dictates scenarios of RHS to be [1,2,3] and
-            coefficient of new to be [3,4,5]
+        stage-wise independent discrete uncertain RHSs
 
-            # stage-wise independent continuous uncertainties
-            def f(random_state):
-                return random_state.multivariate_normal(
-                    mean = [0,0],
-                    cov = [[1,0],[0,100]]
-                )
-            newConstrs = model.addConstrs(
-                (new[i] + past[i] == 0 for i in range(2)),
-                uncertainty=f
-            )
+        >>> newConstrs = model.addConstrs(
+        ...     new[i] + past[i] == 0 for i in range(2),
+        ...     uncertainty=[[1,2],[2,3]]
+        ... )
 
-            # stage-wise dependent continuous uncertainties
-            newConstrs = model.addConstrs(
-                (new[i] + past[i] == 0 for i in range(2)),
-                uncertainty_dependent = [0,1],
-            )
+        The above example dictates scenarios of RHSs to be [1,2] and [2,3]
+
+        stage-wise independent continuous uncertain RHSs
+
+        >>> def f(random_state):
+        ...     return random_state.multivariate_normal(
+        ...         mean = [0,0],
+        ...         cov = [[1,0],[0,100]]
+        ...     )
+        >>> newConstrs = model.addConstrs(
+        ...        (new[i] + past[i] == 0 for i in range(2)),
+        ...        uncertainty=f
+        ... )
+
+        Markovian uncertain RHSs
+
+        >>> newConstrs = model.addConstrs(
+        ...     (new[i] + past[i] == 0 for i in range(2)),
+        ...     uncertainty_dependent = [0,1],
+        ... )
         """
         constr = self._model.addConstrs(generator, name=name)
         self._model.update()
@@ -977,7 +995,7 @@ class StochasticModel(object):
             RandomState instance used by numpy.random.
             Default is None.
 
-        replace: boolean, optional (default is True)
+        replace: boolean, optional, default is True
             Whether the sample is with or without replacement.
         """
         # Discretize continuous true problem
@@ -1086,8 +1104,7 @@ class StochasticModel(object):
         self.n_samples = n_samples
 
     def _update_uncertainty(self, k):
-        """Update model with the k^th stage-wise independent
-        discrete uncertainty"""
+        # Update model with the k^th stage-wise independent discrete uncertainty
         if self.uncertainty_coef is not None:
             for (constr, var), value in self.uncertainty_coef.items():
                 self._model.chgCoeff(constr, var, value[k])
@@ -1105,8 +1122,7 @@ class StochasticModel(object):
                     var_tuple.setAttr("Obj", value[k])
 
     def _update_uncertainty_discrete(self, k):
-        """update model with the k^th stage-wise independent
-        true discrete uncertainty"""
+        # update model with the k^th stage-wise independent true discrete uncertainty
         if self.uncertainty_coef_discrete is not None:
             for (constr, var), value in self.uncertainty_coef_discrete.items():
                 self._model.chgCoeff(constr, var, value[k])
@@ -1124,7 +1140,7 @@ class StochasticModel(object):
                     var_tuple.setAttr("Obj", value[k])
 
     def _sample_uncertainty(self, random_state=None):
-        """Sample stage-wise independent true continuous uncertainty"""
+        # Sample stage-wise independent true continuous uncertainty
         random_state = check_random_state(random_state)
         if self.uncertainty_coef_continuous is not None:
             for (
@@ -1156,7 +1172,7 @@ class StochasticModel(object):
                         self._model.chgCoeff(key[0], key[1], sample[index])
 
     def _update_uncertainty_dependent(self, Markov_state):
-        """Update model with a Markov state"""
+        # Update model with a Markov state
         if self.uncertainty_coef_dependent is not None:
             for (constr,var), value in self.uncertainty_coef_dependent.items():
                 self._model.chgCoeff(constr, var, Markov_state[value])
@@ -1215,6 +1231,10 @@ class StochasticModel(object):
                     obj=discount,
                     name="alpha",
                 )
+    def _delete_CTG(self):
+        if self.alpha is not None:
+            self._model.remove(self.alpha)
+            self.alpha = None
 
     def _update_link_constrs(self, fwdSoln):
         self._model.setAttr("RHS", self.link_constrs, fwdSoln)
@@ -1237,12 +1257,14 @@ class StochasticModel(object):
         for cut in self.cuts:
             self._model.remove(cut)
         self.cuts = []
+        self._delete_link_constrs()
+        self._delete_CTG()
         self._model.update()
         self._model.reset()
 
     def _solveLP(self):
-        objLPScen = [None for _ in range(self.n_samples)]
-        gradLPScen = [None for _ in range(self.n_samples)]
+        objLPScen = numpy.empty(self.n_samples)
+        gradLPScen = numpy.empty((self.n_samples, self.n_states))
         for k in range(self.n_samples):
             self._update_uncertainty(k)
             self.optimize()
@@ -1252,28 +1274,30 @@ class StochasticModel(object):
             gradLPScen[k] = self.getAttr("Pi", self.link_constrs)
         return objLPScen, gradLPScen
 
-    def _average(self, obj_or_grad):
-        if self.probability is None:
-            return numpy.mean(obj_or_grad, axis=0)
-        else:
-            return numpy.dot(self.probability, obj_or_grad)
+    def _average(self, objLPScen, gradLPScen):
+        return self.measure(
+            obj=objLPScen,
+            grad=gradLPScen,
+            p=self.probability,
+            sense=self._model.modelSense)
 
     def set_probability(self, probability):
-        """Set probability measure of discrete scenarios.
+        """
+        Set probability measure of discrete scenarios.
 
         Parameters
         ----------
         probability: array-like
-            Probability of scenarios. Default is uniform measure:
-                [1/n_samples for _ in range(n_samples)])
+            Probability of scenarios. Default is uniform measure
+            [1/n_samples for _ in range(n_samples)].
             Length of the list must equal length of uncertainty.
             The order of the list must match with the order of
             uncertainty list.
 
         Examples
         --------
-        newVar = model.addVar(ub=2.0, uncertainty=[1,2,3])
-        model.setProbability([0.2,0.3,0.4])
+        >>> newVar = model.addVar(ub=2.0, uncertainty=[1,2,3])
+        >>> model.setProbability([0.2,0.3,0.4])
         """
         self.probability = list(probability)
         if len(probability) != self.n_samples:
@@ -1299,9 +1323,9 @@ class StochasticModel(object):
 
         Examples
         --------
-        now, past = model.addStateVar()
-        TS = model.addConstr(now - past == 0)
-        model.add_continuous_uncertainty(f, [(TS, past), TS])
+        >>> now, past = model.addStateVar()
+        >>> TS = model.addConstr(now - past == 0)
+        >>> model.add_continuous_uncertainty(f, [(TS, past), TS])
         """
         for item in locations:
             if type(item) not in [gurobipy.Var, gurobipy.Constr]:
@@ -1349,7 +1373,7 @@ class StochasticModel(object):
         return result
 
     def optimize(self):
-        """Just for time statistics"""
+        # Just for time statistics
         self._model.optimize()
 
     def write_infeasible_model(self, text):
@@ -1397,8 +1421,8 @@ class StochasticModelLG(StochasticModel):
             MIPGap,
             tol):
         n_local_copies = len(self.local_copies)
-        objLGScen = [None for _ in range(self.n_samples)]
-        gradLGScen = [None for _ in range(self.n_samples)]
+        objLGScen = numpy.empty(self.n_samples)
+        gradLGScen = numpy.empty((self.n_samples, self.n_states))
         for k in range(self.n_samples):
             # Benchmark is objVal of primal problem if LG is tight, otherwise
             # it is updated later as the objVal of cut problem
@@ -1515,13 +1539,13 @@ class StochasticModelLG(StochasticModel):
             )
             self.optimize()
             objLGScen[k] = self.objBound
-        objLG,gradLG = self._average(objLGScen), self._average(gradLGScen)
+        objLG,gradLG = self._average(objLGScen, gradLGScen)
         #! scenario iterations end
         return objLG, gradLG
 
     def _binarize(self, precision, n_binaries, transition=0):
-        """Binarize StochasticModel. StochasticModel at transition stage keeps
-        states in original space while binarzing local_copies"""
+        # Binarize StochasticModel. StochasticModel at transition stage keeps
+        # states in original space while binarzing local_copies
         self.n_states_original_space = self.n_states
         self.local_copies_original_space = self.local_copies
         self.states_original_space = self.states

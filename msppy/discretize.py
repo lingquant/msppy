@@ -1,8 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-@author: lingquan
-"""
 import numpy
 from numbers import Number
 import pandas

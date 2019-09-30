@@ -1,8 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-@author: lingquan
-"""
 from msppy.utils.logger import LoggerSDDP,LoggerEvaluation,LoggerComparison
 from msppy.utils.statistics import check_random_state,rand_int,compute_CI,allocate_jobs
 from msppy.evaluation import Evaluation, EvaluationTrue
@@ -16,51 +11,16 @@ import pandas
 
 
 class SDDP(object):
-    """SDDP solver base class.
+    """
+    SDDP solver base class.
 
     Parameters
     ----------
     MSP: list
         A multi-stage stochastic program object.
 
-    Attributes
-    ----------
-    db: list
-        The deterministic bounds obtained in backward steps.
-
-    pv: list
-        The policy values obtained in forward steps.
-
-    bounds: DataFrame
-        The DataFrame stores db & pv.
-
-    iteration: int
-        The number of iteration in SDDP algorithm.
-
-    percentile: float
-        The percentile to make CI.
-
-    n_processes: int
-        The number of processes to run in parallel. Run serial SDDP if 1.
-        If n_steps is 1, n_processes is coerced to be 1.
-
-    n_steps: int
-        The number of forward/backward steps to run in each cut iteration.
-        It is coerced to be 1 if n_processes is 1.
-
-    cut_type: list
-        It is ["B"] for the base class
-
-    cut_type_list: list
-        It is [["B"] for t in range(self.MSP.T-1)] for the bse class
-
-    start: int
-        The start stage index to add cut (it should be -1 for SDDP_infinity)
-
-    Methods
-    -------
-    Solve():
-        use SDDP algorithm to solve a MSLP instance.
+    reset: bool
+        Whether to reset models (remove all cuts).
     """
 
     def __init__(self, MSP, reset=True):
@@ -70,6 +30,7 @@ class SDDP(object):
         self.cut_type_list = [["B"] for t in range(MSP.T-1)]
         if reset:
             MSP._reset()
+            MSP._flag_update = False
         self.MSP = MSP
         self.iteration = 0
         self.n_processes = 1
@@ -240,15 +201,12 @@ class SDDP(object):
                 if MSP.n_Markov_states != 1:
                     m._update_link_constrs(forward_solution[t-1])
                 objLPScen, gradLPScen = m._solveLP()
-                objLP[k], gradLP[k] = (
-                    m._average(objLPScen),
-                    m._average(gradLPScen),
-                )
+                objLP[k], gradLP[k] = m._average(objLPScen, gradLPScen)
                 objLP[k] -= numpy.dot(gradLP[k], forward_solution[t-1])
             self._add_and_store_cuts(t, objLP, gradLP, cuts, "B", j)
-            self.add_cuts_additional_procedure(t, objLP, gradLP, cuts, "B", j)
+            self._add_cuts_additional_procedure(t, objLP, gradLP, cuts, "B", j)
 
-    def add_cuts_additional_procedure(self, t, rhs, grad, cuts=None,
+    def _add_cuts_additional_procedure(self, t, rhs, grad, cuts=None,
             cut_type=None, j=None):
         pass
 
@@ -348,9 +306,9 @@ class SDDP(object):
                         for k in range(self.MSP.n_Markov_states[t]):
                             self.MSP.models[t][k]._add_cut(
                                 rhs=cut[k][0], gradient=cut[k][1:])
-        self.add_cut_from_multiprocessing_array_additional_procedure(cuts)
+        self._add_cut_from_multiprocessing_array_additional_procedure(cuts)
 
-    def add_cut_from_multiprocessing_array_additional_procedure(self, cuts):
+    def _add_cut_from_multiprocessing_array_additional_procedure(self, cuts):
         pass
 
     def _remove_redundant_cut(self, clean_stages):
@@ -451,7 +409,8 @@ class SDDP(object):
             n_simulations_true=3000,
             query=None,
             query_dual=None,
-            query_stage_cost=None,
+            query_stage_cost=False,
+            query_policy_value=False,
             n_periodical_stages=None,
             freq_clean=None,
             logFile=1,
@@ -636,9 +595,6 @@ class SDDP(object):
                         CI=CI,
                         time=elapsed_time,
                     )
-                if self.iteration > 10 and self.iteration % 10 == 1:
-                    for t in range(self.MSP.T):
-                        self.MSP.models[t].reset()
                 if (
                     freq_evaluations is not None
                     and self.iteration%freq_evaluations == 0
@@ -657,8 +613,9 @@ class SDDP(object):
                         n_processes=n_processes,
                         n_periodical_stages=n_periodical_stages
                     )
-                    pandas.DataFrame(evaluation.pv).to_csv(directory+
-                        "iter_{}_pv.csv".format(self.iteration))
+                    if query_policy_value:
+                        pandas.DataFrame(evaluation.pv).to_csv(directory+
+                            "iter_{}_pv.csv".format(self.iteration))
                     if query is not None:
                         for item in query:
                             evaluation.solution[item].to_csv(directory+
@@ -681,8 +638,9 @@ class SDDP(object):
                             n_processes=n_processes,
                             n_periodical_stages=n_periodical_stages
                         )
-                    pandas.DataFrame(evaluationTrue.pv).to_csv(directory+
-                        "iter_{}_pv_true.csv".format(self.iteration))
+                        if query_policy_value:
+                            pandas.DataFrame(evaluationTrue.pv).to_csv(directory+
+                                "iter_{}_pv_true.csv".format(self.iteration))
                     if query is not None:
                         for item in query:
                             evaluationTrue.solution[item].to_csv(directory+
@@ -781,8 +739,10 @@ class SDDP(object):
         if freq_comparisons is not None:
             logger_comparison.footer()
         self.total_time = total_time
+
     @property
     def first_stage_solution(self):
+        """the obtained solution of state variables(s) in the first stage"""
         return (
             {var.varName: var.X for var in self.MSP.models[0].states}
             if self.MSP.n_Markov_states == 1
@@ -790,7 +750,8 @@ class SDDP(object):
         )
 
     def plot_bounds(self, start=0, window=1, smooth=0, ax=None):
-        """plot the evolution of bounds
+        """
+        plot the evolution of bounds
 
         Parameters
         ----------
@@ -817,8 +778,10 @@ class SDDP(object):
         from msppy.utils.plot import plot_bounds
         return plot_bounds(self.db, self.pv, self.MSP.sense, self.percentile,
         start=start, window=window, smooth=smooth, ax=ax)
+
     @property
     def bounds(self):
+        """dataframe of the obtained bound"""
         df = pandas.DataFrame.from_records(self.pv)
         df['db'] = self.db
         return df
@@ -985,7 +948,7 @@ class SDDiP(SDDP):
                     "B" in self.cut_type_list[t-1]
                     or "SB" in self.cut_type_list[t-1]
                 ):
-                    gradLP[k] = m._average(gradLPScen)
+                    objLP[k], gradLP[k] = m._average(objLPScen, gradLPScen)
                 # SB and LG share the same model
                 if (
                     "SB" in self.cut_type_list[t-1]
@@ -996,7 +959,6 @@ class SDDiP(SDDP):
                     m._delete_link_constrs()
                 # compute objective in all types of cuts
                 if "B" in self.cut_type_list[t-1]:
-                    objLP[k] = m._average(objLPScen)
                     objLP[k] -= numpy.dot(gradLP[k], forward_solution[t-1])
                 if "SB" in self.cut_type_list[t-1]:
                     objSB[k] = m._solveSB(gradLPScen)
@@ -1022,13 +984,13 @@ class SDDiP(SDDP):
             #! Markov states iteration ends
             if "B" in self.cut_type_list[t-1]:
                 self._add_and_store_cuts(t, objLP, gradLP, cuts, "B", j)
-                self.add_cuts_additional_procedure(t, objLP, gradLP, cuts, "B", j)
+                self._add_cuts_additional_procedure(t, objLP, gradLP, cuts, "B", j)
             if "SB" in self.cut_type_list[t-1]:
                 self._add_and_store_cuts(t, objSB, gradLP, cuts, "SB", j)
-                self.add_cuts_additional_procedure(t, objSB, gradLP, cuts, "SB", j)
+                self._add_cuts_additional_procedure(t, objSB, gradLP, cuts, "SB", j)
             if "LG" in self.cut_type_list[t-1]:
                 self._add_and_store_cuts(t, objLG, gradLG, cuts, "LG", j)
-                self.add_cuts_additional_procedure(t, objLG, gradLG, cuts, "LG", j)
+                self._add_cuts_additional_procedure(t, objLG, gradLG, cuts, "LG", j)
         #! Time iteration ends
 
     def _compute_cut_type_by_iteration(self):
@@ -1069,7 +1031,7 @@ class SDDiP(SDDP):
 class SDDP_infinity(SDDP):
 
 
-    def add_cuts_additional_procedure(
+    def _add_cuts_additional_procedure(
         self, t, rhs, grad, cuts=None, cut_type=None, j=None
     ):
         """Store cut information (rhs and grad) to cuts for the j th step, for cut
@@ -1084,7 +1046,7 @@ class SDDP_infinity(SDDP):
         else:
             raise NotImplementedError
 
-    def add_cut_from_multiprocessing_array_additional_procedure(self, cuts):
+    def _add_cut_from_multiprocessing_array_additional_procedure(self, cuts):
         for cut_type in self.cut_type_list[0]:
             for cut in cuts[0][cut_type]:
                 if self.MSP.n_Markov_states == 1:
@@ -1231,11 +1193,16 @@ class SDDiP_infinity(SDDP_infinity, SDDiP):
 class Extensive(object):
     """Extensive solver class.
 
+    Parameters
+    ----------
+    MSP: list
+        A multi-stage stochastic program object.
+
+    reset: bool
+        Whether to reset models (remove all cuts)
+
     Attributes
     ----------
-    MSP:
-        The multistage stochastic program
-
     extensive_model:
         The constructed extensive model
 
@@ -1244,16 +1211,12 @@ class Extensive(object):
 
     construction_time:
         The time cost in constructing extensive model
-
-    Methods
-    -------
-    solve:
-        Solve the extensive model
     """
 
     def __init__(self, MSP, reset=True):
         if reset:
             MSP._reset()
+            MSP._flag_update = False
         self.MSP = MSP
         self.solving_time = None
         self.construction_time = None
@@ -1285,22 +1248,32 @@ class Extensive(object):
 
         for k, v in kwargs.items():
             setattr(self.extensive_model.Params, k, v)
-
         self._construct_extensive()
-
         construction_end_time = time.time()
+        self.construction_time = construction_end_time - construction_start_time
         solving_start_time = time.time()
         self.extensive_model.optimize()
         solving_end_time = time.time()
-
-        self.construction_time = construction_end_time - construction_start_time
         self.solving_time = solving_end_time - solving_start_time
         self.total_time = self.construction_time + self.solving_time
-
         return self.extensive_model.objVal
 
+    @property
+    def first_stage_solution(self):
+        """the obtained solution of state variables(s) in the first stage"""
+        if self.MSP.n_Markov_states == 1:
+            names = [var.varname for var in self.MSP.models[0].states]
+            states = {name:self.extensive_model.getVarByName(name+'(0,)')
+                for name in names}
+            return {k:v.X for k,v in states.items()}
+        else:
+            names = [var.varname for var in self.MSP.models[0][0].states]
+            states = {name:self.extensive_model.getVarByName(name+'((0,),(0,))')
+                for name in names}
+            return {k:v.X for k,v in states.items()}
+
     def _construct_extensive(self):
-        """Construct extensive model."""
+        ## Construct extensive model
         MSP = self.MSP
         T = MSP.T
         n_Markov_states = MSP.n_Markov_states

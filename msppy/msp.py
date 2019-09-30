@@ -1,8 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-@author: lingquan
-"""
 from msppy.sp import StochasticModel,StochasticModelLG
 import gurobipy
 from itertools import product
@@ -18,19 +13,9 @@ import math
 
 
 class MSLP(object):
-    """A multistage stochastic linear program.
-
-    A multistage stochastic linear program is composed of a sequence of
-    StochasticModels. It is stage-wise independent if no Markovian uncertainties
-    are specified. Markov chain uncertainties should be specified by Markov
-    state spaces and transition matrices. Markovian continuous uncertainties
-    should be specified by a sample path generator.
-    SAA,SA,RSA are the three methods to discrete Markovian continuous
-    uncertainties.
-    Extensive solver and SDDP solver are the two solvers to obtain policies from
-    the approximation model.
-    Evaluation of computed policies can be done both on the true problem and
-    the approximation model.
+    """
+    A multistage stochastic linear program composed of a sequence of
+    StochasticModels.
 
     Parameters
     ----------
@@ -38,25 +23,27 @@ class MSLP(object):
         The number of stages.
 
     bound: float, optional
-        A known lower bound for minimization problem or a known upper bound
-        for maximation problem. Default value is -1B for maximization problem
-        and 1B for maximation problem.
+        A known uniform lower bound or uppder bound (depending on optimization
+        sense) for each stage problem.
+        Default value is -1B for maximization problem and 1B for maximation problem.
 
     sense: +1/-1, optional (default=1)
         The optimization sense. +1 indicates minimization and -1 indicates
         maximization.
 
+    outputFlag: 1/0, optional (default=0)
+        Log model solving process or not.
+
     discount: float between 0(exclusive) and 1(inclusive), optional (default=1)
         The discount factor used to compute present value.
+
+    n_periodical_stages: int, optional (default=None)
+        Specify the length of a period for infinite horizon problem. Default
+        value indicates a finite horizon problem.
 
     **kwargs: optional
         Gurobipy attributes to specify on individual StochasticModels. (e.g.,
         presolve, method)
-
-    Attributes
-    ----------
-    db: float
-        The deterministic bound
 
     Methods
     -------
@@ -137,38 +124,45 @@ class MSLP(object):
 
         Parameters
         ----------
-        Markov_states: list of array-like
-            Markov state spaces in each stage.
+        Markov_states: list of matrix-like
+            Markov state spaces in each stage. The shape of matrix-like must be
+            (p,q) where q is the dimension index of the Markov chain and p is the
+            index of the Markov states
 
         transition_matrix: list of matrix-like
-            Markov chain transition matrices in each stage.
+            Markov chain transition matrices in each stage. The shape of
+            must be compatible with the Markov states
 
         start: start period (inclusive) of the Markov chain process
 
         end: end period (exclusive) of the Markov chain process
 
         The dimension of all entries in Markov states and transition matrices
-        must be in the form of:
-            Markov_states: [1], [p_{1}], ... , [p_{T-1}]
+        must be in the form of: Markov_states: [1], [p_{1}], ... , [p_{T-1}]
             transition_matrix: [[1]], [1,p_{1}], [p_{1},p_{2}], [p_{T-2},p_{T-1}]
         where p_1,...p_{T-1} are integers.
 
         Examples
         --------
-        Suppose there are three stages.
+        >>> add_MC_uncertainty(
+        ...     Markov_states=[[[0]],[[4],[6]],[[4],[6]]],
+        ...     transition_matrix=[
+        ...         [[1]],
+        ...         [[0.5,0.5]],
+        ...         [[0.3,0.7],[0.7,0.3]]
+        ...     ]
+        ... )
 
-        add_MC_uncertainty(
-            Markov_states=[
-                [0.2],
-                [0.3,0.5],
-                [0.4,0.6]
-            ],
-            transition_matrix=[
-                [[1]],
-                [[0.2,0.8]],
-                [[0.6,0.4],[0.3,0.7]]
-            ]
-        )
+        Three dimensional Markov chain
+
+        >>> add_MC_uncertainty(
+        ...     Markov_states=[[[0]],[[4,6,5],[6,3,4]],[[4,6,5],[6,3,4]]],
+        ...     transition_matrix=[
+        ...         [[1]],
+        ...         [[0.5,0.5]],
+        ...         [[0.3,0.7],[0.7,0.3]]
+        ...     ]
+        ... )
         """
         if hasattr(self, "Markovian_uncertainty") or hasattr(self,"Markov_states"):
             raise ValueError("Markovian uncertainty has already added!")
@@ -193,33 +187,19 @@ class MSLP(object):
 
         Example
         -------
-        Unidimensional:
-            Consider an autoregressive model:
-                X_t = 0.5 * X_{t-1} + \epsilon, where \epsilon ~ N(0,1)
-            The stochastic process generator can be defined as:
-                def f(random_state,size):
-                    a = numpy.empty([size,T,1])
-                    a[:,0,:] = 0.2
-                    for t in range(1,T):
-                        a.append(0.5 * a[-1] + random_state.normal(0,1))
-                    return a
 
-        Multidimensional：
-            Consider an autoregressive model:
-                X_t = 0.5 * X_{t-1} + \epsilon, where \epsilon ~ N(0,I_{2*2}))
-            The stochastic process generator can be defined as:
-                def f(random_state):
-                    a = numpy.empty([size,T,1])
-                    a[:,0,:] = numpy.array([[0.2,0.2]])
-                    for t in range(T):
-                        a.append(0.5 * a[-1] + random_state.normal(0,1))
-                    return a
-                            0.5 * numpy.array(a[-1])
-                            + random_state.multivariate_normal(
-                                mean = [0, 0],
-                                cov = [[0, 1],[1,0]] )
-                        )
-                    return a
+        >>> def f(random_state, size):
+        ...     a = numpy.empty([size,3,2])
+        ...     a[:,0,:] = [[0.2,0.2]]
+        ...     for t in range(1,3):
+        ...         a[:,t,:] = (
+        ...             0.5 * numpy.array(a[:,t-1,:])
+        ...             + random_state.multivariate_normal(
+        ...                 mean = [0,0],
+        ...                 cov = [[0,1],[1,0]])
+        ...         )
+        ...     return a
+        >>> add_Markovian_uncertainty(f)
         """
         if hasattr(self, "Markovian_uncertainty") or hasattr(self,
         "Markov_states"):
@@ -249,6 +229,11 @@ class MSLP(object):
                         m._update_uncertainty_dependent(self.Markov_states[t][k])
                         m.update()
                         self.models[t][k] = m.copy()
+        self.n_states = (
+            [self.models[t].n_states for t in range(self.T)]
+            if self._type == 'stage-wise independent'
+            else [self.models[t][0].n_states for t in range(self.T)]
+        )
 
     def _check_inidividual_Markovian_index(self):
         """Check dimension indices of sample path generator are set properly."""
@@ -270,9 +255,9 @@ class MSLP(object):
         m = self.models[0] if type(self.models[0]) != list else self.models[0][0]
         if m.n_samples != 1:
             raise Exception("First stage must be deterministic!")
-        else:
-            m._update_uncertainty(0)
-            m.update()
+        # else:
+        #     m._update_uncertainty(0)
+        #     m.update()
 
     def _check_individual_stage_models(self):
         """Check state variables are set properly. Check stage-wise continuous
@@ -307,7 +292,6 @@ class MSLP(object):
                 "Stage-wise dependent continuous uncertainties "+
                 "must be discretized!"
             )
-        self.n_states = [self.models[t].n_states for t in range(self.T)]
 
     def _reset(self):
         """Reset the program to its original state."""
@@ -334,13 +318,13 @@ class MSLP(object):
         """Discretize Markovian continuous uncertainty by k-means or (robust)
         stochasitic approximation.
 
-        Parameter
-        ---------
-        n_samples: int | None (default=None)
+        Parameters
+        ----------
+        n_samples: int, optional, default=None
             number of i.i.d. samples to generate for stage-wise independent
             randomness.
 
-        random_state: None | int | instance of RandomState, optional (default=None)
+        random_state: None | int | instance of RandomState, optional, default=None
             If int, random_state is the seed used by the
             random number generator;
             If RandomState instance, random_state is the
@@ -348,40 +332,31 @@ class MSLP(object):
             If None, the random number generator is the
             RandomState instance used by numpy.random.
 
-        replace: bool (default=True)
+        replace: bool, optional, default=True
             Indicates generating i.i.d. samples with/without replacement for
             stage-wise independent randomness.
 
-        n_Markov_states: list | int | None
+        n_Markov_states: list | int, optional, default=None
             If list, it specifies different dimensions of Markov state space
             over time. Length of the list should equal length of the Markovian
             uncertainty.
             If int, it specifies dimensions of Markov state space.
+            Note: If the uncertainties are int, trained Markov states will be
+            rounded to integers, and duplicates will be removed. In such cases,
+            there is no guaranttee that the number of Markov states is n_Markov_states.
 
-        Note: If the uncertainties are int, trained Markov states will be
-        rounded to integers, and duplicates will be removed. In such cases,
-        there is no guaranttee that the number of Markov states is n_Markov_states.
-
-        method: binary, optional (default=0)
+        method: binary, optional, default=0
             'input': the approximating Markov chain is given by user input (
             through specifying Markov_states and transition_matrix)
             'SAA': use k-means to train Markov chain.
             'SA': use stochastic approximation to train Markov chain.
             'RSA': use robust stochastic approximation to train Markov chain.
 
-        n_sample_paths: int | None  (default=None)
+        n_sample_paths: int, optional, default=None
             number of sample paths to train the Markov chain.
 
-        Markov_states/transition_matrix: array-like (default=None)
-            Use input of approximating Markov chain. Length of the array-like
-            should be T. Each entry of Markov_states should be unidimensional
-            array-like. Each entry of transition_matrix should be bidimensional
-            array-like.
-
-            Note: the first stage model is always deterministic. Therefore, the
-            first entry of Markov_states should be of length one. The first
-            entry of transition_matrix should be [[1]].
-
+        Markov_states/transition_matrix: matrix-like, optional, default=None
+            The user input of approximating Markov chain.
         """
         if n_samples is not None:
             if isinstance(n_samples, (numbers.Integral, numpy.integer)):
@@ -611,7 +586,7 @@ class MSLP(object):
                 m._delete_link_constrs()
                 m.update()
 
-    def set_AVaR(self, lambda_, alpha_):
+    def set_AVaR(self, lambda_, alpha_, method='indirect'):
         """Set linear combination of expectation and conditional value at risk
         (average value at risk) as risk measure
 
@@ -628,6 +603,11 @@ class MSLP(object):
             If float, \alpha_2,\dots,\alpha_T will be assigned to the same
             value.
             If array-like, must be of length T-1/T.
+
+        method: 'direct'/'indirect'
+            direct method directly solves the risk averse problem.
+            indirect method adds additional state variables and transform the
+            risk averse problem into risk netural.
         Remark
         ------
             Bigger lambda_ means more risk averse;
@@ -665,76 +645,105 @@ class MSLP(object):
         else:
             raise TypeError("alpha_ should be float/array-like instead of \
             {}!".format(type(alpha_)))
-        self._set_up_CTG()
-        self._delete_link_constrs()
-        self.measure = "risk averse"
-        for t in range(self.T):
-            M = (
-                self.models[t]
-                if type(self.models[t]) == list
-                else [self.models[t]]
-            )
-            for m in M:
-                p_now, p_past = m.addStateVar(
-                    lb=-gurobipy.GRB.INFINITY,
-                    ub=gurobipy.GRB.INFINITY,
-                    name="additional_state",
+        if method == 'direct':
+            self._set_up_CTG()
+            if self._type != 'stage-wise independent':
+                raise NotImplementedError
+            from msppy.utils.measure import Expectation_AVaR
+            from functools import partial
+            for t in range(1, self.T):
+                M = (
+                    self.models[t]
+                    if type(self.models[t]) == list
+                    else [self.models[t]]
                 )
-                v = m.addVar(name="additional_var")
-                m.addConstr(self.sense * (p_now-self.bound) >= 0)
-                z = m.getObjective()
-                # additional is \lambda_{t+1}p_t
-                if m.alpha is not None:
-                    additional = lambda_[t+1] * p_now
-                else:
-                    additional = 0
-                stage_cost = m.addVar(
-                    name="stage_cost",
-                    lb=-gurobipy.GRB.INFINITY,
-                    ub=gurobipy.GRB.INFINITY,
+                for m in M:
+                    m.measure = partial(Expectation_AVaR,
+                        alpha_=alpha_[t], lambda_=lambda_[t])
+            for t in range(self.T):
+                M = (
+                    self.models[t]
+                    if type(self.models[t]) == list
+                    else [self.models[t]]
                 )
-                alpha = m.alpha if m.alpha is not None else 0.0
-                if t > 0:
-                    if m.uncertainty_obj != {}:
-                        m.addConstr(
-                            z - self.discount*alpha == stage_cost,
-                            uncertainty=m.uncertainty_obj,
-                        )
-                        m.uncertainty_obj = {}
-                        m.setObjective(
-                            (1 - lambda_[t])
-                            * (
-                                stage_cost
-                                + self.discount * alpha
-                                + self.discount * additional
+                for m in M:
+                    stage_cost = m.addVar(
+                        name="stage_cost",
+                        lb=-gurobipy.GRB.INFINITY,
+                        ub=gurobipy.GRB.INFINITY,
+                    )
+                    alpha = m.alpha if m.alpha is not None else 0.0
+                    m.addConstr(m.getObjective() - self.discount*alpha == stage_cost)
+                    m.update()
+
+
+        elif method == 'indirect':
+            self._set_up_CTG()
+            self._delete_link_constrs()
+            for t in range(self.T):
+                M = (
+                    self.models[t]
+                    if type(self.models[t]) == list
+                    else [self.models[t]]
+                )
+                for m in M:
+                    p_now, p_past = m.addStateVar(
+                        lb=-gurobipy.GRB.INFINITY,
+                        ub=gurobipy.GRB.INFINITY,
+                        name="additional_state",
+                    )
+                    v = m.addVar(name="additional_var")
+                    m.addConstr(self.sense * (p_now-self.bound) >= 0)
+                    z = m.getObjective()
+                    stage_cost = m.addVar(
+                        name="stage_cost",
+                        lb=-gurobipy.GRB.INFINITY,
+                        ub=gurobipy.GRB.INFINITY,
+                    )
+                    alpha = m.alpha if m.alpha is not None else 0.0
+                    if t > 0:
+                        if m.uncertainty_obj != {}:
+                            m.addConstr(
+                                z - self.discount*alpha == stage_cost,
+                                uncertainty=m.uncertainty_obj,
                             )
-                            + self.sense * lambda_[t] / alpha_[t] * v
-                        )
-                        m.addConstr(
-                            v
-                            >= (
-                                stage_cost
-                                + self.discount * alpha
-                                + self.discount * additional
-                                - p_past
+                            m.uncertainty_obj = {}
+                            m.setObjective(
+                                (1 - lambda_[t])
+                                * (
+                                    stage_cost
+                                    + self.discount * alpha
+                                )
+                                + lambda_[t] * p_past
+                                + self.sense * lambda_[t] / alpha_[t] * v
                             )
-                            * self.sense
-                        )
+                            m.addConstr(
+                                v
+                                >= (
+                                    stage_cost
+                                    + self.discount * alpha
+                                    - p_past
+                                )
+                                * self.sense
+                            )
+                        else:
+                            m.addConstr(z - self.discount*alpha == stage_cost)
+                            m.setObjective(
+                                (1-lambda_[t]) * z
+                                + lambda_[t] * p_past
+                                + self.sense * lambda_[t] / alpha_[t] * v
+                            )
+                            m.addConstr(
+                                v
+                                >= (z - p_past)
+                                * self.sense
+                            )
                     else:
                         m.addConstr(z - self.discount*alpha == stage_cost)
-                        m.setObjective(
-                            (1-lambda_[t]) * (z + self.discount*additional)
-                            + self.sense * lambda_[t] / alpha_[t] * v
-                        )
-                        m.addConstr(
-                            v
-                            >= (z + self.discount*additional - p_past)
-                            * self.sense
-                        )
-                else:
-                    m.addConstr(z - self.discount*alpha == stage_cost)
-                    m.setObjective(z + self.discount*additional)
-                m.update()
+                    m.update()
+        else:
+            raise NotImplementedError
+        self.measure = "risk averse"
 
     def _update(self):
         self._check_first_stage_model()

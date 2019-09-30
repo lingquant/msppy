@@ -1,8 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-@author: lingquan
-"""
 from msppy.utils.statistics import (rand_int,check_random_state,compute_CI,
 allocate_jobs)
 import pandas
@@ -54,11 +49,6 @@ class _Evaluation(object):
 
     markovian_idx: list
         The Markov state that is the closest to the markovian_samples.
-
-    Methods
-    -------
-    run:
-        Run simulations on the approximation model.
     """
     def __init__(self, MSP):
         self.MSP = MSP
@@ -240,7 +230,11 @@ class _Evaluation(object):
             pv[j] = result['pv']
 
 class Evaluation(_Evaluation):
+
     __doc__ = _Evaluation.__doc__
+    def run(self, *args, **kwargs):
+        super().run(*args, **kwargs)
+
     def _compute_sample_path_idx_and_markovian_path(self):
         if self.n_simulations == -1:
             self.n_sample_paths,self.sample_path_idx = self.MSP._enumerate_sample_paths(self.MSP.T-1)
@@ -249,6 +243,7 @@ class Evaluation(_Evaluation):
 
 
 class EvaluationTrue(Evaluation):
+    
     __doc__ = Evaluation.__doc__
     def run(self, *args, **kwargs):
         MSP = self.MSP
@@ -265,11 +260,17 @@ class EvaluationTrue(Evaluation):
 
     def _compute_sample_path_idx_and_markovian_path(self):
         MSP = self.MSP
+        if (
+            MSP._type in ["stage-wise independent", "Markov chain"]
+            and MSP._individual_type == "original"
+            and not hasattr(MSP,"bin_stage")
+        ):
+            return super()._compute_sample_path_idx_and_markovian_path()
         self.n_sample_paths = self.n_simulations
         self.solve_true = True
         if MSP._type == "Markovian":
             self.markovian_samples = MSP.Markovian_uncertainty(
-                self.random_state,self.n_simulations)
+                numpy.random.RandomState(2**32-1),self.n_simulations)
             self.markovian_idx = numpy.zeros([self.n_simulations,MSP.T],dtype=int)
             for t in range(1,MSP.T):
                 dist = numpy.empty([self.n_simulations,MSP.n_Markov_states[t]])

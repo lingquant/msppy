@@ -91,7 +91,7 @@ class _Evaluation(object):
             query=None,
             query_dual=None,
             query_stage_cost=False,
-            T=None,
+            n_periodical_stages=None,
             n_processes=1,):
         """Run a Monte Carlo simulation to evaluate the policy.
 
@@ -100,9 +100,6 @@ class _Evaluation(object):
         n_simulations: int/-1
             If int: the number of simulations;
             If -1: exhuastive evaluation.
-
-        percentile: float, optional (default=95)
-            The percentile used to compute the confidence interval.
 
         query: list, optional (default=None)
             The names of variables that are intended to query.
@@ -113,25 +110,21 @@ class _Evaluation(object):
         query_stage_cost: bool, optional (default=False)
             Whether to query values of individual stage costs.
 
-        n_processes: int, optional (default=1)
-            The number of processes to run the simulation.
+        percentile: float, optional (default=95)
+            The percentile used to compute the confidence interval.
 
-        T: int, optional (default=None)
-            For infinite horizon problem, how many stages to evaluate the policy.
+        random_state: int, optional (default=None)
+            the seed used by the random number
         """
 
         from msppy.solver import SDDP, SDDP_infinity
         MSP = self.MSP
-        # overwrite original specified number of stages
-        if MSP.infinity and T:
-            T_original = MSP.T
-            MSP.T = T
-            modified_horizon = True
-        else:
-            T = MSP.T
-            modified_horizon = False
-
-        if not MSP.infinity:
+        T = MSP.T
+        if n_periodical_stages is not None:
+            n_periodical_stages_original = MSP.n_periodical_stages
+            MSP.n_periodical_stages = n_periodical_stages
+            T = n_periodical_stages
+        if MSP.n_periodical_stages is None:
             self.solver = SDDP(MSP)
         else:
             self.solver = SDDP_infinity(MSP)
@@ -199,9 +192,9 @@ class _Evaluation(object):
             }
         if query_stage_cost:
             self.stage_cost = pandas.DataFrame(numpy.array(stage_cost))
-        # recover original specified number of stages
-        if MSP.infinity and modified_horizon:
-            MSP.T = T_original
+
+        if n_periodical_stages is not None:
+            MSP.n_periodical_stages = n_periodical_stages_original
 
     def run_single(self, pv, jobs, query=None, query_dual=None,
             query_stage_cost=False, stage_cost=None,

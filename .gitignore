@@ -6,12 +6,6 @@ __pycache__/
 # C extensions
 *.so
 
-# locally developing stuff
-/doc/examples/**/*.py
-/doc/examples/**/*.sh
-/doc/examples/**/*.txt
-/doc/examples/**/*.lp
-
 # Distribution / packaging
 .Python
 build/

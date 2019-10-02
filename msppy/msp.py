@@ -19,9 +19,8 @@ class MSLP(object):
 
     Parameters
     ----------
-    T: integer (>1)
-        The number of stages for finite horizon problem. For infinite horizon
-        problem, T-1 gives the period.
+    T: integer
+        The number of stages.
 
     bound: float, optional
         A known uniform lower bound or uppder bound (depending on optimization
@@ -42,9 +41,9 @@ class MSLP(object):
         Whether to create ctg variable alpha for each stage (except the last stage)
         when initialization.
 
-    infinite: bool, optional, default=0
-        1 represents infinite horizon problem. Default value 0 indicates a
-        finite horizon problem.
+    n_periodical_stages: int, optional, default=None
+        Specify the length of a period for infinite horizon problem. Default
+        value indicates a finite horizon problem.
 
     **kwargs: optional
         Gurobipy attributes to specify on individual StochasticModels. (e.g.,
@@ -70,7 +69,7 @@ class MSLP(object):
             outputFlag=0,
             discount=1.0,
             ctg=False,
-            infinity=False,
+            n_periodical_stages=None,
             **kwargs):
         if (T < 2
                 or discount > 1
@@ -94,9 +93,8 @@ class MSLP(object):
         self._flag_discrete = 0
         self._flag_update = 0
         self.db = None
-        self.infinity = infinity
+        self.n_periodical_stages = n_periodical_stages
         if ctg: self._set_up_CTG()
-        if infinity: self.period = T-1
 
     def __repr__(self):
         sense = 'Minimization' if self.sense == 1 else 'Maximization'
@@ -551,7 +549,7 @@ class MSLP(object):
                         m.update()
 
     def _set_up_CTG(self):
-        T = self.T if self.infinity else self.T - 1
+        T = self.T if self.n_periodical_stages is not None else self.T - 1
         for t in range(T):
             # MC model may already do model copies
             M = (
@@ -636,7 +634,7 @@ class MSLP(object):
         elif isinstance(l, (numbers.Number)):
             if l > 1 or l < 0:
                 raise ValueError("l must be between 0 and 1!")
-            if not self.infinity:
+            if self.n_periodical_stages is None:
                 l = [None] + [l] * (self.T-1)
             else:
                 l = [None] + [l] * self.T
@@ -652,7 +650,7 @@ class MSLP(object):
         elif isinstance(a, (numbers.Number)):
             if a > 1 or a < 0:
                 raise ValueError("a must be between 0 and 1!")
-            if not self.infinity:
+            if self.n_periodical_stages is None:
                 a = [None] + [a] * (self.T-1)
             else:
                 a = [None] + [a] * self.T

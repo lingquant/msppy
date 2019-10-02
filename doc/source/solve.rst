@@ -12,7 +12,7 @@ Stage-wise independent discrete finite problem
 Both the extensive solver and SDDP solver shows that, the optimum is $3.18 and
 an optimal amount of newspaper to buy today is 7 for the true problem
 
-.. ipython:: python
+.. code-block:: python
 
     from msppy.utils.examples import construct_nvid
     from msppy.solver import SDDP, Extensive
@@ -39,7 +39,7 @@ Both solvers show that, for SAA(1), the optimum is $2.79 and
 an optimal amount of newspaper to buy today is 9.08
 
 
-.. ipython:: python
+.. code-block:: python
 
     from msppy.utils.examples import construct_nvic
     from msppy.solver import SDDP, Extensive
@@ -75,7 +75,7 @@ Markov chain problem
 Both the extensive solver and SDDP solver shows that, the optimum is $9.05
 and an optimal amount of newspaper to buy today is 6 for the true problem.
 
-.. ipython:: python
+.. code-block:: python
 
     from msppy.utils.examples import construct_nvmc
     from msppy.solver import SDDP, Extensive
@@ -101,7 +101,7 @@ method (stochastic gradient descent) with 1000 iterations. We refer the
 resulting disretization problem as MC. Both solvers show that, for MC, the
 optimum is $2.67 and an optimal amount of newspaper to buy today is 17.76
 
-.. ipython:: python
+.. code-block:: python
 
     from msppy.utils.examples import construct_nvm
     from msppy.solver import SDDP, Extensive
@@ -134,7 +134,7 @@ Risk averse problem
 -------------------
 Direct method
 
-.. ipython:: python
+.. code-block:: python
 
     from msppy.utils.examples import construct_nvid
     from msppy.solver import SDDP
@@ -146,7 +146,7 @@ Direct method
 
 Indirect method
 
-.. ipython:: python
+.. code-block:: python
 
     from msppy.utils.examples import construct_nvid
     from msppy.solver import SDDP
@@ -162,7 +162,7 @@ Integer problem
 SDDiP solver and Extensive solver can solve MSIP problems. The built-in cuts
 provided are Benders' cut, strengthened Benders' cut and Lagaragian cut.
 
-.. ipython:: python
+.. code-block:: python
 
     from msppy.utils.examples import construct_nvidi
     from msppy.solver import SDDiP, Extensive
@@ -181,7 +181,7 @@ Infinite horizon problem
 
 SDDP_infinity solver can solve infinite horizon MSLP problem.
 
-.. ipython:: python
+.. code-block:: python
 
     from msppy.utils.examples import construct_nvidinf
     from msppy.solver import SDDP_infinity
@@ -217,7 +217,7 @@ every 1 iteration by compute the exact expected policy value (turning off
 simulation). If the gap becomes not larger than 1e-4, the algorithm
 will be stopped. We can see that the algorithm stops after 6 iterations.
 
-.. ipython:: python
+.. code-block:: python
 
     from msppy.utils.examples import construct_nvid
     from msppy.solver import SDDP
@@ -237,7 +237,7 @@ difference of the expected policy values. If the difference becomes
 not larger than 1e-4, the algorithm will be stopped. We can see that again, the
 algorithm stops after 6 iterations.
 
-.. ipython:: python
+.. code-block:: python
 
     from msppy.utils.examples import construct_nvid
     from msppy.solver import SDDP

@@ -12,7 +12,7 @@ uniformly distributed in 0 to 10. The retail price, production cost, and
 recycled value of one newspaper is $2, $1, $0.5. How many newspaper should we buy
 today?
 
-.. ipython:: python
+.. code-block:: python
 
     from msppy.msp import MSLP
     from msppy.solver import SDDP

@@ -10,7 +10,7 @@ Stage-wise independent continuous problem
 The stage-wise independent continuous demand process can be discretized simply
 by specifying the sample size and the random seed.
 
-.. ipython:: python
+.. code-block:: python
 
     from msppy.utils.examples import construct_nvic
     nvic = construct_nvic()
@@ -23,7 +23,7 @@ The following snippet discretizes the Markovian uncertainty by a ten dimensional
 Markov chain using stochastic approximation method (stochastic gradient descent)
 with 1000 iterations.
 
-.. ipython:: python
+.. code-block:: python
 
     from msppy.utils.examples import construct_nvm
     nvm = construct_nvm()

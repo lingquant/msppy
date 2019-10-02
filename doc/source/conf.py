@@ -13,8 +13,8 @@ import sys
 import glob
 import os
 import shutil
-import msppy
 
+on_rtd = os.environ.get('READTHEDOCS', None) == 'True'
 # -- Copy Examples -----------------------------------------------------------
 
 # root = os.path.split(os.path.abspath(__file__))[0]
@@ -61,8 +61,6 @@ extensions = [
     "sphinx.ext.coverage",
     "sphinx.ext.ifconfig",
     "sphinx.ext.napoleon",
-    "IPython.sphinxext.ipython_console_highlighting",
-    "IPython.sphinxext.ipython_directive",
     "nbsphinx",
     # "sphinx.ext.autosectionlabel"
 ]

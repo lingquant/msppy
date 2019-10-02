@@ -20,7 +20,7 @@ uniformly distributed in 0 to 10. The retail price, production cost, and
 recycled value of one newspaper is $2, $1, $0.5. How many newspaper should we buy
 today?
 
-.. ipython:: python
+.. code-block:: python
 
     from msppy.msp import MSLP
     nvid = MSLP(T=2, sense=-1, bound=20)
@@ -56,7 +56,7 @@ Stage-wise independent continuous problems
 Now suppose the uncertain demand follows a lognormal distribution. The problem
 can be constructed simply by replace the scenario list with a continuous function.
 
-.. ipython:: python
+.. code-block:: python
 
     from msppy.msp import MSLP
     import numpy as np
@@ -99,7 +99,7 @@ state are [4,6] with equal probability. In the third stage, the Markov states
 are [4,6] and the transition matrix from stage two to stage three is
 [[0.3,0.7],[0.7,0.3]].
 
-.. ipython:: python
+.. code-block:: python
 
     from msppy.msp import MSLP
     nvmc = MSLP(T=3, sense=-1, bound=100)
@@ -128,7 +128,7 @@ Markovian continuous problems
 Suppose now the demand follows a time series :math:`d_t=0.5\times d_{t-1}+\epsilon_{t}`,
 where :math:`\epsilon_{t}` is i.i.d and follows a lognormal distribution.
 
-.. ipython:: python
+.. code-block:: python
 
     from msppy.msp import MSLP
     import numpy as np
@@ -165,7 +165,7 @@ The following snippet constructs a stage-wise independent finite discrete
 problem in Expectation_AVaR. The parameter l represents the weight given to AVaR
 and a represents the parameter of value-of-risk.
 
-.. ipython:: python
+.. code-block:: python
 
     from msppy.msp import MSLP
     import numpy as np
@@ -187,7 +187,7 @@ Integer problems
 The variables are in fact integer. This can be achieved by created MSIP instance.
 The program can also be binarized (this is useful for tighter cuts).
 
-.. ipython:: python
+.. code-block:: python
 
     from msppy.msp import MSIP
     import numpy as np
@@ -208,7 +208,7 @@ Infinite horizon problems
 -------------------------
 Infinite horizon problem can be built by specifying infinity argument to be True.
 
-.. ipython:: python
+.. code-block:: python
 
     from msppy.msp import MSLP
     rhs = [[0,2,4,6,8],[1,3,5,7,9]]

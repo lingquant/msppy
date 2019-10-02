@@ -18,19 +18,13 @@ class SDDP(object):
     ----------
     MSP: list
         A multi-stage stochastic program object.
-
-    reset: bool
-        Whether to reset models (remove all cuts).
     """
 
-    def __init__(self, MSP, reset=False):
+    def __init__(self, MSP):
         self.db = []
         self.pv = []
         self.cut_type = ["B"]
         self.cut_type_list = [["B"] for t in range(MSP.T-1)]
-        if reset:
-            MSP._reset()
-            MSP._flag_update = False
         self.MSP = MSP
         self.iteration = 0
         self.n_processes = 1
@@ -156,16 +150,37 @@ class SDDP(object):
         type cut_type and for stage t."""
         MSP = self.MSP
         if MSP.n_Markov_states == 1:
-            MSP.models[t-1]._add_cut(rhs[0], grad[0])
+            MSP.models[t-1]._add_cut(rhs, grad)
             if cuts is not None:
-                cuts[t-1][cut_type][j][:] = numpy.append(rhs[0], grad[0])
+                cuts[t-1][cut_type][j][:] = numpy.append(rhs, grad)
         else:
             for k in range(MSP.n_Markov_states[t-1]):
-                rhs_ = numpy.dot(MSP.transition_matrix[t][k], rhs)
-                grad_ = numpy.dot(MSP.transition_matrix[t][k], grad)
-                MSP.models[t-1][k]._add_cut(rhs_, grad_)
+                MSP.models[t-1][k]._add_cut(rhs[k], grad[k])
                 if cuts is not None:
-                    cuts[t-1][cut_type][j][k][:] = numpy.append(rhs_, grad_)
+                    cuts[t-1][cut_type][j][k][:] = numpy.append(rhs[k], grad[k])
+
+    def _compute_cuts(self, t, m, objLPScen, gradLPScen):
+        MSP = self.MSP
+        if MSP.n_Markov_states == 1:
+            return m._average(objLPScen[0], gradLPScen[0])
+        objLPScen = objLPScen.reshape(
+            MSP.n_Markov_states[t]*MSP.n_samples[t])
+        gradLPScen = gradLPScen.reshape(
+            MSP.n_Markov_states[t]*MSP.n_samples[t],MSP.n_states[t])
+        probability_ind = (
+            m.probability if m.probability
+            else numpy.ones(m.n_samples)/m.n_samples
+        )
+        probability = numpy.einsum('ij,k->ijk',MSP.transition_matrix[t],
+            probability_ind)
+        probability = probability.reshape(MSP.n_Markov_states[t-1],
+            MSP.n_Markov_states[t]*MSP.n_samples[t])
+        objLP = numpy.empty(MSP.n_Markov_states[t-1])
+        gradLP = numpy.empty((MSP.n_Markov_states[t-1],MSP.n_states[t]))
+        for k in range(MSP.n_Markov_states[t-1]):
+            objLP[k], gradLP[k] = m._average(objLPScen, gradLPScen,
+                probability[k])
+        return objLP, gradLP
 
     def _backward(self, forward_solution, j=None, lock=None, cuts=None):
         """Single backward step of SDDP serially or in parallel.
@@ -187,22 +202,19 @@ class SDDP(object):
         """
         MSP = self.MSP
         for t in range(MSP.T-1, 0, -1):
-            models = (
-                [MSP.models[t]]
-                if MSP.n_Markov_states == 1
-                else MSP.models[t]
-            )
-            n_Markov_states = (
-                1 if MSP.n_Markov_states == 1 else MSP.n_Markov_states[t]
-            )
-            objLP = [None] * n_Markov_states
-            gradLP = [None] * n_Markov_states
-            for k, m in enumerate(models):
+            if MSP.n_Markov_states == 1:
+                M, n_Markov_states = [MSP.models[t]], 1
+            else:
+                M, n_Markov_states = MSP.models[t], MSP.n_Markov_states[t]
+            objLPScen = numpy.empty((n_Markov_states, MSP.n_samples[t]))
+            gradLPScen = numpy.empty((n_Markov_states, MSP.n_samples[t],
+                MSP.n_states[t]))
+            for k,m in enumerate(M):
                 if MSP.n_Markov_states != 1:
                     m._update_link_constrs(forward_solution[t-1])
-                objLPScen, gradLPScen = m._solveLP()
-                objLP[k], gradLP[k] = m._average(objLPScen, gradLPScen)
-                objLP[k] -= numpy.dot(gradLP[k], forward_solution[t-1])
+                objLPScen[k], gradLPScen[k] = m._solveLP()
+            objLP, gradLP = self._compute_cuts(t, m, objLPScen, gradLPScen)
+            objLP -= numpy.matmul(gradLP, forward_solution[t-1])
             self._add_and_store_cuts(t, objLP, gradLP, cuts, "B", j)
             self._add_cuts_additional_procedure(t, objLP, gradLP, cuts, "B", j)
 
@@ -219,10 +231,12 @@ class SDDP(object):
         pv = temp['pv']
         self._deregularize()
         self._backward(forward_solution)
-        self.forward_solution = forward_solution
+        # regularization needs to store last forward_solution
+        if self.regularization_param != 0:
+            self.forward_solution = forward_solution
         return [pv]
 
-    def _SDDP_single_process(self, pv, jobs, lock, cuts, forward_solution):
+    def _SDDP_single_process(self, pv, jobs, lock, cuts, forward_solution=None):
         """Multiple SDDP jobs by single process. pv will store the policy values.
         cuts will store the cut information. Have not use the lock parameter so
         far."""
@@ -235,7 +249,8 @@ class SDDP(object):
             pv[j] = temp['pv']
             self._deregularize()
             self._backward(solution, j, lock, cuts)
-            if j == jobs[-1]:
+            # regularization needs to store last forward_solution
+            if j == jobs[-1] and self.regularization_param != 0:
                 for t in range(self.MSP.T-1):
                     for i in range(self.MSP[t].n_states):
                         forward_solution[t][i] = solution[t][i]
@@ -373,8 +388,11 @@ class SDDP(object):
 
         pv = multiprocessing.Array("d", [0] * self.n_steps)
         lock = multiprocessing.Lock()
-        forward_solution = [multiprocessing.Array(
-            "d",[0] * self.MSP[t].n_states) for t in range(self.MSP.T)]
+        forward_solution = None
+        # regularization needs to store last forward_solution
+        if self.regularization_param != 0:
+            forward_solution = [multiprocessing.Array(
+                "d",[0] * self.MSP[t].n_states) for t in range(self.MSP.T)]
 
         for p in range(self.n_processes):
             procs[p] = multiprocessing.Process(
@@ -387,7 +405,9 @@ class SDDP(object):
 
         self._add_cut_from_multiprocessing_array(cuts)
         self._deregularize()
-        self.forward_solution = [list(item) for item in forward_solution]
+        # regularization needs to store last forward_solution
+        if self.regularization_param != 0:
+            self.forward_solution = [list(item) for item in forward_solution]
 
         return [item for item in pv]
 
@@ -500,6 +520,9 @@ class SDDP(object):
         self.percentile = percentile
         self.regularization_type = regularization_type
         self.regularization_param = regularization_param
+        if self.regularization_param != 0 and MSP._type != 'stage-wise independent':
+            raise NotImplementedError
+
         # distinguish pv_sim from pv
         pv_sim_past = None
 
@@ -923,53 +946,40 @@ class SDDiP(SDDP):
     def _backward(self, forward_solution, j=None, lock=None, cuts=None):
         MSP = self.MSP
         for t in range(MSP.T-1, 0, -1):
-            models = (
-                [MSP.models[t]]
-                if MSP.n_Markov_states == 1
-                else MSP.models[t]
-            )
-            n_Markov_states = (
-                1 if MSP.n_Markov_states == 1
-                else MSP.n_Markov_states[t]
-            )
-            objLP = [None] * n_Markov_states
-            gradLP = [None] * n_Markov_states
-            objSB = [None] * n_Markov_states
-            objLG = [None] * n_Markov_states
-            gradLG = [None] * n_Markov_states
-            for k, model in enumerate(models):
+            if MSP.n_Markov_states == 1:
+                M, n_Markov_states = [MSP.models[t]], 1
+            else:
+                M, n_Markov_states = MSP.models[t], MSP.n_Markov_states[t]
+            objLPScen = numpy.empty((n_Markov_states, MSP.n_samples[t]))
+            gradLPScen = numpy.empty((n_Markov_states, MSP.n_samples[t],
+                MSP.n_states[t]))
+            objSBScen = numpy.empty((n_Markov_states, MSP.n_samples[t]))
+            objLGScen = numpy.empty((n_Markov_states, MSP.n_samples[t]))
+            gradLGScen = numpy.empty((n_Markov_states, MSP.n_samples[t],
+                MSP.n_states[t]))
+            for k, model in enumerate(M):
                 if MSP.n_Markov_states != 1:
                     model._update_link_constrs(forward_solution[t-1])
                 model.update()
                 m = model.relax() if model.isMIP else model
-                objLPScen, gradLPScen = m._solveLP()
-                # B and SB share the gradient
-                if (
-                    "B" in self.cut_type_list[t-1]
-                    or "SB" in self.cut_type_list[t-1]
-                ):
-                    objLP[k], gradLP[k] = m._average(objLPScen, gradLPScen)
+                objLPScen[k], gradLPScen[k] = m._solveLP()
                 # SB and LG share the same model
                 if (
                     "SB" in self.cut_type_list[t-1]
                     or "LG" in self.cut_type_list[t-1]
                 ):
                     m = model.copy()
-                    # SB and LG relax the link constraints
                     m._delete_link_constrs()
-                # compute objective in all types of cuts
-                if "B" in self.cut_type_list[t-1]:
-                    objLP[k] -= numpy.dot(gradLP[k], forward_solution[t-1])
                 if "SB" in self.cut_type_list[t-1]:
-                    objSB[k] = m._solveSB(gradLPScen)
+                    objSBScen[k] = m._solveSB(gradLPScen[k])
                 if "LG" in self.cut_type_list[t-1]:
                     objVal_primal = model._solvePrimal()
                     flag_bin = (
                         True if hasattr(self, "n_binaries")
                         else False
                     )
-                    objLG[k], gradLG[k] = m._solveLG(
-                        gradLPScen=gradLPScen,
+                    objLGScen[k], gradLGScen[k] = m._solveLG(
+                        gradLPScen=gradLPScen[k],
                         given_bound=MSP.bound,
                         objVal_primal=objVal_primal,
                         flag_tight = flag_bin,
@@ -983,12 +993,16 @@ class SDDiP(SDDP):
                     )
             #! Markov states iteration ends
             if "B" in self.cut_type_list[t-1]:
+                objLP, gradLP = self._compute_cuts(t, m, objLPScen, gradLPScen)
+                objLP -= numpy.matmul(gradLP, forward_solution[t-1])
                 self._add_and_store_cuts(t, objLP, gradLP, cuts, "B", j)
                 self._add_cuts_additional_procedure(t, objLP, gradLP, cuts, "B", j)
             if "SB" in self.cut_type_list[t-1]:
+                objSB, gradLP = self._compute_cuts(t, m, objSBScen, gradLPScen)
                 self._add_and_store_cuts(t, objSB, gradLP, cuts, "SB", j)
                 self._add_cuts_additional_procedure(t, objSB, gradLP, cuts, "SB", j)
             if "LG" in self.cut_type_list[t-1]:
+                objLG, gradLG = self._compute_cuts(t, m, objLGScen, gradLGScen)
                 self._add_and_store_cuts(t, objLG, gradLG, cuts, "LG", j)
                 self._add_cuts_additional_procedure(t, objLG, gradLG, cuts, "LG", j)
         #! Time iteration ends
@@ -1039,10 +1053,7 @@ class SDDP_infinity(SDDP):
         MSP = self.MSP
         if MSP.n_Markov_states == 1:
             if t == 1:
-                MSP.models[-1]._add_cut(
-                    rhs[0],
-                    grad[0]
-                )
+                MSP.models[-1]._add_cut(rhs, grad)
         else:
             raise NotImplementedError
 
@@ -1191,15 +1202,14 @@ class SDDiP_infinity(SDDP_infinity, SDDiP):
 
 
 class Extensive(object):
-    """Extensive solver class.
+    """Extensive solver class. Can solve
+    1. small-scale stgage-wise independent finite discrete risk netural problem 2.
+    small-scale Markov chain risk neutral problem.
 
     Parameters
     ----------
     MSP: list
         A multi-stage stochastic program object.
-
-    reset: bool
-        Whether to reset models (remove all cuts)
 
     Attributes
     ----------
@@ -1213,10 +1223,7 @@ class Extensive(object):
         The time cost in constructing extensive model
     """
 
-    def __init__(self, MSP, reset=False):
-        if reset:
-            MSP._reset()
-            MSP._flag_update = False
+    def __init__(self, MSP):
         self.MSP = MSP
         self.solving_time = None
         self.construction_time = None

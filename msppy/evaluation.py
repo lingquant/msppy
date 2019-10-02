@@ -66,6 +66,7 @@ class _Evaluation(object):
         self.solve_true = False
 
     def _compute_gap(self):
+        if self.MSP.measure != 'risk neutral': return
         try:
             MSP = self.MSP
             if self.CI is not None:
@@ -124,9 +125,9 @@ class _Evaluation(object):
             MSP.n_periodical_stages = n_periodical_stages
             T = n_periodical_stages
         if MSP.n_periodical_stages is None:
-            self.solver = SDDP(MSP, reset=False)
+            self.solver = SDDP(MSP)
         else:
-            self.solver = SDDP_infinity(MSP, reset=False)
+            self.solver = SDDP_infinity(MSP)
         self.n_simulations = n_simulations
         query_stage_cost = query_stage_cost
         self._compute_sample_path_idx_and_markovian_path()
@@ -243,7 +244,7 @@ class Evaluation(_Evaluation):
 
 
 class EvaluationTrue(Evaluation):
-    
+
     __doc__ = Evaluation.__doc__
     def run(self, *args, **kwargs):
         MSP = self.MSP

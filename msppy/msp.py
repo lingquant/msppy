@@ -177,7 +177,7 @@ class MSLP(object):
         )
         self.dim_Markov_states,self.n_Markov_states = info
         self.Markov_states = Markov_states
-        self.transition_matrix = transition_matrix
+        self.transition_matrix = [numpy.array(item) for item in transition_matrix]
         self._type = 'Markov chain'
 
     def add_Markovian_uncertainty(self, Markovian_uncertainty):
@@ -240,6 +240,11 @@ class MSLP(object):
             if self._type == 'stage-wise independent'
             else [self.models[t][0].n_states for t in range(self.T)]
         )
+        self.n_samples = (
+            [self.models[t].n_samples for t in range(self.T)]
+            if self._type == 'stage-wise independent'
+            else [self.models[t][0].n_samples for t in range(self.T)]
+        )
 
     def _check_inidividual_Markovian_index(self):
         """Check dimension indices of sample path generator are set properly."""
@@ -300,7 +305,7 @@ class MSLP(object):
             )
 
     def _reset(self):
-        """Reset the program to its original state."""
+        # to do, reset discretization problem to original problem
         for t in range(self.T):
             M = (
                 self.models[t]
@@ -432,7 +437,7 @@ class MSLP(object):
                     +"generator is not the same as the given Markov chain "
                     +"approximation!")
             self.Markov_states = Markov_states
-            self.transition_matrix = transition_matrix
+            self.transition_matrix = [numpy.array(item) for item in transition_matrix]
         self._flag_discrete = 1
         self.n_Markov_states = n_Markov_states
         if method in ['RSA','SA','SAA']:
@@ -592,69 +597,68 @@ class MSLP(object):
                 m._delete_link_constrs()
                 m.update()
 
-    def set_AVaR(self, lambda_, alpha_, method='indirect'):
+    def set_AVaR(self, l, a, method='indirect'):
         """Set linear combination of expectation and conditional value at risk
         (average value at risk) as risk measure
 
         Parameters
         ----------
-        lambda_: float between 0 and 1/array-like of floats between 0 and 1
-            The weight of AVaR: \lambda_2,\dots,\lambda_T
-            If float, \lambda_2,\dots,\lambda_T will be assigned to the same
-            value.
-            If array-like, must be of length T-1/T.
+        l: float between 0 and 1/array-like of floats between 0 and 1
+            The weights of AVaR from stage 2 to stage T
+            If float, the weight will be assigned to the same number.
+            If array-like, must be of length T-1 (for finite horizon problem)
+            or T (for infinite horizon problem).
 
-        alpha_: float between 0 and 1/array-like of floats between 0 and 1
-            The quantile parameter in value-at-risk: \alpha_2,\dots,\alpha_T
-            If float, \alpha_2,\dots,\alpha_T will be assigned to the same
-            value.
-            If array-like, must be of length T-1/T.
+        a: float between 0 and 1/array-like of floats between 0 and 1
+            The quantile parameters in value-at-risk from stage 2 to stage T
+            If float, those parameters will be assigned to the same number.
+            If array-like, must be of length T-1 (for finite horizon problem)
+            or T (for infinite horizon problem).
 
         method: 'direct'/'indirect'
             direct method directly solves the risk averse problem.
             indirect method adds additional state variables and transform the
             risk averse problem into risk netural.
-        Remark
-        ------
-            Bigger lambda_ means more risk averse;
-            smaller alpha_  means more risk averse.
+
+        Notes
+        -----
+            Bigger l means more risk averse;
+            smaller a  means more risk averse.
         """
-        if isinstance(lambda_, (abc.Sequence, numpy.ndarray)):
-            if len(lambda_) not in [self.T-1, self.T]:
-                raise ValueError("Length of lambda_ must be T-1!")
-            if not all(item <= 1 and item >= 0 for item in lambda_):
-                raise ValueError("lambda_ must be between 0 and 1!")
-            lambda_ = [None] + list(lambda_)
-        elif isinstance(lambda_, (numbers.Number)):
-            if lambda_ > 1 or lambda_ < 0:
-                raise ValueError("lambda_ must be between 0 and 1!")
+        if isinstance(l, (abc.Sequence, numpy.ndarray)):
+            if len(l) not in [self.T-1, self.T]:
+                raise ValueError("Length of l must be T-1!")
+            if not all(item <= 1 and item >= 0 for item in l):
+                raise ValueError("l must be between 0 and 1!")
+            l = [None] + list(l)
+        elif isinstance(l, (numbers.Number)):
+            if l > 1 or l < 0:
+                raise ValueError("l must be between 0 and 1!")
             if self.n_periodical_stages is None:
-                lambda_ = [None] + [lambda_] * (self.T-1)
+                l = [None] + [l] * (self.T-1)
             else:
-                lambda_ = [None] + [lambda_] * self.T
+                l = [None] + [l] * self.T
         else:
-            raise TypeError("lambda_ should be float/array-like instead of \
-            {}!".format(type(lambda_)))
-        if isinstance(alpha_, (abc.Sequence, numpy.ndarray)):
-            if len(alpha_) not in [self.T-1, self.T]:
-                raise ValueError("Length of alpha_ must be T-1!")
-            if not all(item <= 1 and item >= 0 for item in alpha_):
-                raise ValueError("alpha_ must be between 0 and 1!")
-            alpha_ = [None] + list(alpha_)
-        elif isinstance(alpha_, (numbers.Number)):
-            if alpha_ > 1 or alpha_ < 0:
-                raise ValueError("alpha_ must be between 0 and 1!")
+            raise TypeError("l should be float/array-like instead of \
+            {}!".format(type(l)))
+        if isinstance(a, (abc.Sequence, numpy.ndarray)):
+            if len(a) not in [self.T-1, self.T]:
+                raise ValueError("Length of a must be T-1!")
+            if not all(item <= 1 and item >= 0 for item in a):
+                raise ValueError("a must be between 0 and 1!")
+            a = [None] + list(a)
+        elif isinstance(a, (numbers.Number)):
+            if a > 1 or a < 0:
+                raise ValueError("a must be between 0 and 1!")
             if self.n_periodical_stages is None:
-                alpha_ = [None] + [alpha_] * (self.T-1)
+                a = [None] + [a] * (self.T-1)
             else:
-                alpha_ = [None] + [alpha_] * self.T
+                a = [None] + [a] * self.T
         else:
-            raise TypeError("alpha_ should be float/array-like instead of \
-            {}!".format(type(alpha_)))
+            raise TypeError("a should be float/array-like instead of \
+            {}!".format(type(a)))
         if method == 'direct':
             self._set_up_CTG()
-            if self._type != 'stage-wise independent':
-                raise NotImplementedError
             from msppy.utils.measure import Expectation_AVaR
             from functools import partial
             for t in range(1, self.T):
@@ -665,7 +669,7 @@ class MSLP(object):
                 )
                 for m in M:
                     m.measure = partial(Expectation_AVaR,
-                        alpha_=alpha_[t], lambda_=lambda_[t])
+                        a=a[t], l=l[t])
             for t in range(self.T):
                 M = (
                     self.models[t]
@@ -715,13 +719,13 @@ class MSLP(object):
                             )
                             m.uncertainty_obj = {}
                             m.setObjective(
-                                (1 - lambda_[t])
+                                (1 - l[t])
                                 * (
                                     stage_cost
                                     + self.discount * alpha
                                 )
-                                + lambda_[t] * p_past
-                                + self.sense * lambda_[t] / alpha_[t] * v
+                                + l[t] * p_past
+                                + self.sense * l[t] / a[t] * v
                             )
                             m.addConstr(
                                 v
@@ -735,9 +739,9 @@ class MSLP(object):
                         else:
                             m.addConstr(z - self.discount*alpha == stage_cost)
                             m.setObjective(
-                                (1-lambda_[t]) * z
-                                + lambda_[t] * p_past
-                                + self.sense * lambda_[t] / alpha_[t] * v
+                                (1-l[t]) * z
+                                + l[t] * p_past
+                                + self.sense * l[t] / a[t] * v
                             )
                             m.addConstr(
                                 v

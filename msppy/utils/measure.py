@@ -6,14 +6,14 @@
 import numpy
 
 def Expectation(obj, grad, p, sense):
-    if p:
+    if p is not None:
         return (numpy.dot(p, obj),numpy.dot(p, grad))
     else:
         return (numpy.mean(obj),numpy.mean(grad, axis=0))
 
-def Expectation_AVaR(obj, grad, p, alpha_, lambda_, sense):
+def Expectation_AVaR(obj, grad, p, a, l, sense):
     n_samples, n_states = grad.shape
-    if not p:
+    if p is None:
         p = numpy.ones(n_samples)/n_samples
     objAvg = numpy.dot(p, obj)
     gradAvg = numpy.dot(p, grad)
@@ -25,14 +25,14 @@ def Expectation_AVaR(obj, grad, p, alpha_, lambda_, sense):
     tempSum = 0
     for index in objSortedIndex:
         tempSum += p[index]
-        if tempSum >= 1 - alpha_:
+        if tempSum >= 1 - a:
             kappa = index
             break
-#    kappa = objSortedIndex[int((1 - alpha_) * sampleSize)]
+#    kappa = objSortedIndex[int((1 - a) * sampleSize)]
     ## obj=(1-lambda)*objAvg+lambda(obj_kappa+1/alpha*avg((obj_kappa - obj_l)+))
-    objLP = (1 - lambda_) * objAvg + lambda_ * obj[kappa]
+    objLP = (1 - l) * objAvg + l * obj[kappa]
     ## grad=(1-lambda)*gradAvg+lambda(grad_kappa+1/alpha*avg((pos))
-    gradLP = (1 - lambda_) * gradAvg + lambda_ * grad[kappa]
+    gradLP = (1 - l) * gradAvg + l * grad[kappa]
 
     gradTerm = numpy.zeros((n_samples, n_states))
     objTerm = numpy.zeros(n_samples)
@@ -40,6 +40,6 @@ def Expectation_AVaR(obj, grad, p, alpha_, lambda_, sense):
         if sense*(obj[j] - obj[kappa]) >= 0:
             gradTerm[j] = sense * (grad[j] - grad[kappa])
             objTerm[j] = sense * (obj[j] - obj[kappa])
-    objLP += sense * lambda_ * numpy.dot(p, objTerm) / alpha_
-    gradLP += sense * lambda_ * numpy.dot(p, gradTerm) / alpha_
+    objLP += sense * l * numpy.dot(p, objTerm) / a
+    gradLP += sense * l * numpy.dot(p, gradTerm) / a
     return (objLP, gradLP)

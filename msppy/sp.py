@@ -1274,11 +1274,12 @@ class StochasticModel(object):
             gradLPScen[k] = self.getAttr("Pi", self.link_constrs)
         return objLPScen, gradLPScen
 
-    def _average(self, objLPScen, gradLPScen):
+    def _average(self, objLPScen, gradLPScen, probability=None):
+        p = self.probability if probability is None else probability
         return self.measure(
             obj=objLPScen,
             grad=gradLPScen,
-            p=self.probability,
+            p=p,
             sense=self._model.modelSense)
 
     def set_probability(self, probability):
@@ -1385,7 +1386,7 @@ class StochasticModel(object):
 
 class StochasticModelLG(StochasticModel):
     def _solveSB(self, gradLPScen):
-        objSB = 0
+        objSBScen = numpy.empty(self.n_samples)
         for k in range(self.n_samples):
             probability = (
                 self.probability[k] if self.probability != None else None
@@ -1393,11 +1394,8 @@ class StochasticModelLG(StochasticModel):
             self.setAttr("obj", self.local_copies, [-x for x in gradLPScen[k]])
             self._update_uncertainty(k)
             self.optimize()
-            if probability != None:
-                objSB += self.objBound * probability
-            else:
-                objSB += self.objBound / self.n_samples
-        return objSB
+            objSBScen = self.objBound
+        return objSBScen
 
     def _solvePrimal(self):
         objVal_primal = [None for _ in range(self.n_samples)]
@@ -1539,9 +1537,8 @@ class StochasticModelLG(StochasticModel):
             )
             self.optimize()
             objLGScen[k] = self.objBound
-        objLG,gradLG = self._average(objLGScen, gradLGScen)
         #! scenario iterations end
-        return objLG, gradLG
+        return objLGScen, gradLGScen
 
     def _binarize(self, precision, n_binaries, transition=0):
         # Binarize StochasticModel. StochasticModel at transition stage keeps

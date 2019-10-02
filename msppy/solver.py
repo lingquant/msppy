@@ -431,7 +431,7 @@ class SDDP(object):
             query_dual=None,
             query_stage_cost=False,
             query_policy_value=False,
-            n_periodical_stages=None,
+            T=None,
             freq_clean=None,
             logFile=1,
             logToConsole=1,
@@ -468,7 +468,7 @@ class SDDP(object):
             The percentile used to compute confidence interval
 
         diff: float, optional (default=-inf)
-            The stablization threshold
+            The stabilization threshold
 
         freq_comparisons: int, optional (default=None)
             The frequency of comparisons of policies
@@ -498,6 +498,27 @@ class SDDP(object):
 
         logToConsole: binary, optional (default=1)
             Switch of logging to console
+
+        Examples
+        --------
+
+        >>> SDDP().solve(max_iterations=10, max_time=10,
+            max_stable_iterations=10)
+        Optimality gap based stopping criteria: evaluate the obtained policy
+        every freq_evaluations iterations by running n_simulations Monte Carlo
+        simulations. If the gap becomes not larger than tol, the algorithm
+        will be stopped.
+        >>> SDDP().solve(freq_evaluations=10, n_simulations=1000, tol=1e-2)
+        Simulation can be turned off; the solver will evaluate the exact expected
+        policy value.
+        >>> SDDP().solve(freq_evaluation=10, n_simulations=-1, tol=1e-2)
+        Stabilization based stopping criteria: compare the policy every
+        freq_comparisons iterations by computing the CI of difference of the
+        expected policy values. If the upper end of CI becomes not larger
+        than tol diff, the algorithm will be stopped.
+        >>> SDDP().solve(freq_comparisons=10, n_simulations=1000, tol=1e-2)
+        Turn off simulation and
+
         """
         MSP = self.MSP
         if freq_clean is not None:
@@ -634,7 +655,7 @@ class SDDP(object):
                         query_stage_cost=query_stage_cost,
                         percentile=percentile,
                         n_processes=n_processes,
-                        n_periodical_stages=n_periodical_stages
+                        T=T
                     )
                     if query_policy_value:
                         pandas.DataFrame(evaluation.pv).to_csv(directory+
@@ -659,7 +680,7 @@ class SDDP(object):
                             query_stage_cost=query_stage_cost,
                             percentile=percentile,
                             n_processes=n_processes,
-                            n_periodical_stages=n_periodical_stages
+                            T=T
                         )
                         if query_policy_value:
                             pandas.DataFrame(evaluationTrue.pv).to_csv(directory+
@@ -753,7 +774,7 @@ class SDDP(object):
         if gap <= tol:
             stop_reason = "convergence tolerance:{} has reached".format(tol)
         if right_end_of_CI <= tol_diff:
-            stop_reason = "stablization threshold:{} has reached".format(tol_diff)
+            stop_reason = "stabilization threshold:{} has reached".format(tol_diff)
 
         b = time.time()
         logger_sddp.footer(reason=stop_reason)
@@ -854,7 +875,7 @@ class SDDiP(SDDP):
             The percentile used to compute confidence interval
 
         diff: float, optional (default=-inf)
-            The stablization threshold
+            The stabilization threshold
 
         freq_comparisons: int, optional (default=None)
             The frequency of comparisons of policies
@@ -916,15 +937,23 @@ class SDDiP(SDDP):
 
         Examples
         --------
-        Assume the cuts given is ["B","SB","LG"], the pattern can be:
-            {"cycle": (4, 1, 1)}, meaning for every six iterations adding:
-                Benders' cuts for the first four,
-                strengthened Benders' cuts for the fifth,
-                Lagrangian cuts for the last.
-            {"in": (0, 4, 5)}, meaning adding:
-                Benders' cuts from the beginning,
-                Strengthened Benders' cuts from the fourth iteration,
-                Lagragian cuts from the fifth iteration.
+        >>> SDDiP().solve(max_iterations=10, cut=['SB'])
+
+        The following cyclical add difference cuts. Specifically, for every six
+        iterations add Benders' cuts for the first four,
+        strengthened Benders' cuts for the fifth,
+        and Lagrangian cuts for the last.
+
+        >>> SDDiP().solve(max_iterations=10, cut=['B','SB','LG'],
+        ...     pattern={"cycle": (4, 1, 1)})
+
+        The following add difference cuts from certain iterations. Specifically,
+        add Benders' cuts from the beginning,
+        Strengthened Benders' cuts from the fourth iteration,
+        and Lagragian cuts from the fifth iteration.
+
+        >>> SDDiP().solve(max_iterations=10, cut=['B','SB','LG'],
+        ...     pattern={'in': (0, 4, 5)})
         """
         if pattern != None:
             if not all(
@@ -1080,7 +1109,7 @@ class SDDP_infinity(SDDP):
             query_stage_cost=None):
         """Single forward step. """
         MSP = self.MSP
-        T = MSP.n_periodical_stages
+        T = MSP.T
         forward_solution = [None for _ in range(T)]
         pv = 0
         query = [] if query is None else list(query)
@@ -1090,8 +1119,9 @@ class SDDP_infinity(SDDP):
         stage_cost = numpy.full(T,numpy.nan)
         # time loop
         for t in range(T):
-            idx = t%(MSP.T-1) if (t%(MSP.T-1) != 0 or t == 0) else -1
+            idx = t%MSP.period if (t%MSP.period != 0 or t == 0) else -1
             if MSP._type == "stage-wise independent":
+
                 m = MSP.models[idx]
             else:
                 raise NotImplementedError
@@ -1147,7 +1177,9 @@ class SDDP_infinity(SDDP):
             if markovian_idx is not None:
                 raise NotImplementedError
         #! time loop
-        idx = numpy.arange(MSP.T-1)
+
+
+        idx = numpy.arange(MSP.period)
 
         # method one
         # for t in range(1,MSP.T):
@@ -1165,9 +1197,11 @@ class SDDP_infinity(SDDP):
         # method two
         pick_from_two = rand_int(2,random_state)
         if pick_from_two == 1:
-            idx[0] = MSP.T - 1
-        for t in range(1,MSP.T):
-            MSP.models[t]._update_link_constrs(forward_solution[idx[t-1]])
+            idx[0] = MSP.period
+        MSP.models[1]._update_link_constrs(forward_solution[idx[0]])
+        if MSP.T > MSP.period + 1:
+            for t in range(2, MSP.period+1):
+                MSP.models[t]._update_link_constrs(forward_solution[t-1])
         forward_solution_shuffled = [forward_solution[item] for item in idx]
         if query == [] and query_dual == [] and query_stage_cost is None:
             return {

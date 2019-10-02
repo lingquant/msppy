@@ -1378,7 +1378,7 @@ class StochasticModel(object):
         self._model.optimize()
 
     def write_infeasible_model(self, text):
-        self._model.write(text + ".lp")
+        self._model.write('./' + text + ".lp")
         raise Exception(
             "infeasibility caught; check complete recourse condition!"
         )
@@ -1387,22 +1387,19 @@ class StochasticModel(object):
 class StochasticModelLG(StochasticModel):
     def _solveSB(self, gradLPScen):
         objSBScen = numpy.empty(self.n_samples)
-        for k in range(self.n_samples):
-            probability = (
-                self.probability[k] if self.probability != None else None
-            )
-            self.setAttr("obj", self.local_copies, [-x for x in gradLPScen[k]])
-            self._update_uncertainty(k)
+        for i in range(self.n_samples):
+            self.setAttr("obj", self.local_copies, [-x for x in gradLPScen[i]])
+            self._update_uncertainty(i)
             self.optimize()
-            objSBScen = self.objBound
+            objSBScen[i] = self.objBound
         return objSBScen
 
     def _solvePrimal(self):
         objVal_primal = [None for _ in range(self.n_samples)]
-        for k in range(self.n_samples):
-            self._update_uncertainty(k)
+        for i in range(self.n_samples):
+            self._update_uncertainty(i)
             self.optimize()
-            objVal_primal[k] = self.objBound
+            objVal_primal[i] = self.objBound
         return objVal_primal
 
     def _solveLG(

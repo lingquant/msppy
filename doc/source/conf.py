@@ -15,17 +15,8 @@ import os
 import shutil
 
 on_rtd = os.environ.get('READTHEDOCS', None) == 'True'
-# -- Copy Examples -----------------------------------------------------------
-
-# root = os.path.split(os.path.abspath(__file__))[0]
-# example_path = os.path.join(root, "..", "..", "examples")
-# examples = glob.glob(os.path.join(example_path, "*/*.ipynb"))
-# for example in examples:
-#     temp, filename = os.path.split(example)
-#     _, dir = os.path.split(temp)
-#     if dir != '.ipynb':
-#         target = os.path.join(root, './examples/'+dir+'_'+filename)
-#         shutil.copyfile(example, target)
+sys.path.insert(0, os.path.abspath('../..'))
+import msppy
 
 
 # -- Project information -----------------------------------------------------
@@ -50,8 +41,8 @@ version = '0.1'
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
-    # "sphinx.ext.autodoc",
-    # "sphinx.ext.autosummary",
+    "sphinx.ext.autodoc",
+    "sphinx.ext.autosummary",
     "sphinx.ext.extlinks",
     "sphinx.ext.todo",
     "sphinx.ext.doctest",
@@ -64,7 +55,7 @@ extensions = [
     "nbsphinx",
     # "sphinx.ext.autosectionlabel"
 ]
-# autosummary_generate = True
+autosummary_generate = True
 autoclass_content = 'class'
 napoleon_use_admonition_for_examples = True
 # Add any paths that contain templates here, relative to this directory.
@@ -90,6 +81,8 @@ language = None
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
 exclude_patterns = ['**checkpoint**']
+
+autodoc_mock_imports = ['gurobipy','numpy','scipy','pandas','scikit-learn', 'matplotlib']
 
 # The name of the Pygments (syntax highlighting) style to use.
 pygments_style = 'colorful'

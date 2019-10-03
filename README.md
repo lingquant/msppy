@@ -15,6 +15,6 @@ Some tiny-scale problems can be found in the quick_start folder. The purpose of 
 ## Examples
 Three real-world large-scale examples--power system planning, portfolio optimization, airline revenue management, can be found in the examples folder. For more details, users are referred to the paper linked below.
 ## Documentations
-Documentations are currently developing and will be released soon.
+https://msppy.readthedocs.io/en/latest/
 ## Citing MSPPy
 If you use MSPPy in a publication, please cite this [paper](http://www.optimization-online.org/DB_HTML/2019/05/7199.html)

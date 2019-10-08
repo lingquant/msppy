@@ -685,17 +685,17 @@ class SDDP(object):
                         if query_policy_value:
                             pandas.DataFrame(evaluationTrue.pv).to_csv(directory+
                                 "iter_{}_pv_true.csv".format(self.iteration))
-                    if query is not None:
-                        for item in query:
-                            evaluationTrue.solution[item].to_csv(directory+
-                                "iter_{}_{}_true.csv".format(self.iteration, item))
-                    if query_dual is not None:
-                        for item in query_dual:
-                            evaluationTrue.solution_dual[item].to_csv(directory+
-                                "iter_{}_{}_true.csv".format(self.iteration, item))
-                    if query_stage_cost:
-                        evaluationTrue.stage_cost.to_csv(directory+
-                            "iter_{}_stage_cost_true.csv".format(self.iteration))
+                        if query is not None:
+                            for item in query:
+                                evaluationTrue.solution[item].to_csv(directory+
+                                    "iter_{}_{}_true.csv".format(self.iteration, item))
+                        if query_dual is not None:
+                            for item in query_dual:
+                                evaluationTrue.solution_dual[item].to_csv(directory+
+                                    "iter_{}_{}_true.csv".format(self.iteration, item))
+                        if query_stage_cost:
+                            evaluationTrue.stage_cost.to_csv(directory+
+                                "iter_{}_stage_cost_true.csv".format(self.iteration))
                     elapsed_time = time.time() - start
                     gap = evaluation.gap
                     if n_simulations == -1:

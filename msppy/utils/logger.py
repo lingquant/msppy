@@ -159,13 +159,13 @@ class LoggerEvaluation(Logger):
     def text(self, iteration, db, time, pv=None, CI=None, gap=None):
         if self.n_simulations > 1:
             self.logger.info(
-                "{:>12d}{:>20f}{:>19f}, {:<19f}{:>12f}{:>12,.2%}".format(
+                "{:>12d}{:>20f}{:>19f}, {:<19f}{:>12f}{:>12}".format(
                     iteration, db, CI[0], CI[1], time, gap
                 )
             )
         else:
             self.logger.info(
-                "{:>12d}{:>20f}{:>20f}{:>12f}{:>12,.2%}".format(
+                "{:>12d}{:>20f}{:>20f}{:>12f}{:>12}".format(
                     iteration, db, pv, time, gap
                 )
             )

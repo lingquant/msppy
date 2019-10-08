@@ -66,7 +66,9 @@ class _Evaluation(object):
         self.solve_true = False
 
     def _compute_gap(self):
-        if self.MSP.measure != 'risk neutral': return
+        if self.MSP.measure != 'risk neutral':
+            self.gap = -1
+            return
         try:
             MSP = self.MSP
             if self.CI is not None:
@@ -79,7 +81,7 @@ class _Evaluation(object):
             else:
                 self.gap = abs( (self.pv[0]-self.db) / self.db )
         except ZeroDivisionError:
-            self.gap = 'nan'
+            self.gap = -1
 
     def _compute_sample_path_idx_and_markovian_path(self):
         pass

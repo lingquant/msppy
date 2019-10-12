@@ -996,7 +996,7 @@ class MSIP(MSLP):
                 self.isMIP[t] = 1
 
     def binarize(self, precision=0, bin_stage=0):
-        """Binarize MSLP.
+        """Binarize MSIP.
 
         Parameters
         ----------

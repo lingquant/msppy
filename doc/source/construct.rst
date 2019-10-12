@@ -226,13 +226,134 @@ Infinite horizon problem can be built by specifying infinity argument to be True
                 uncertainty={'rhs':rhs[t-1]})
             m.addConstr(sold + recycled == buy_past)
 
+Uncertainty
+-----------
+From the above examples, you have already seen the way to build the true problem.
+It starts with creating an MSLP/MSIP object. An MSLP/MSIP object is composed
+of a list of StochasticModel objects. Users are then required to fill in each
+StochasticModel object. The StochasticModel class is a
+stochastic version of the gurobipy.Model that introduced in the Gurobi library.
+It allows users to directly write into a stochastic model rather than treating
+the deterministic counterpart and uncertainties separately. In order to achieve
+it while staying close to the gurobipy syntax, the MSPPy package encapsulates
+the gurobipy.Model and its randomness. Hence, all things that work on
+gurobipy.Model will work on Stochastic Model. In addition, four routines from
+gurobipy are overwritten and several new routines are created for modeling
+convenience. The four overwritten routines as shown in the snippet below,
+addVar, addVars, addConstr, addConstrs, include additional arguments called
+uncertainty and uncertainty_dependent in order to incorporate stage-wise independent
+data process and Markovian process. Uncertainties that appear in the objective
+can be added along with adding related variables (by addVar or
+addVars). Uncertainties that appear in the constraints can be
+added along with adding related constraints (by addConstr or addConstrs).
 
+.. code-block:: python
+
+    m = StochasticModel()
+    m.addVars(..., uncertainty, uncertainty_dependent)
+    m.addVar(..., uncertainty, uncertainty_dependent)
+    m.addConstrs(..., uncertainty, uncertainty_dependent)
+    m.addConstr(...., uncertainty, uncertainty_dependent)
+
+Two new routines are added in order to include state variable(s). Local copy
+variable(s) will be added correspondingly behind the scenes. In the following
+snippet, now is a reference to the added state variable(s) and past is a reference
+to the corresponding local copy variable(s).
+
+.. code-block:: python
+
+    now, past = m.addStateVars(..., uncertainty, uncertainty_dependent)
+    now, past = m.addStateVar(..., uncertainty, uncertainty_dependent)
+
+There are some subtlety when adding multiple uncertainties. Using the above routine adds
+stage-wise independent uncertainty sequentially by specifying its scenarios
+(if finite discrete) or its marginal distribution (if continuous).
+The dependence between uncertainties should be taken care of. Note that the package
+does not allow for a mixture of finite discrete distribution and continuous
+distribution.
+
+Adding multiple stage-wise independent finite discrete uncertainties
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+When the problem has multiple finite discrete uncertainties,
+the package requires for an unique probability measure and the sequentially added
+uncertainties should be of the same length. Hence, users should first construct
+the joint distribution of the uncertainties and compute all the scenarios.
+These scenarios are then added sequentially and the dependence will be retained.
+
+For example, consider a hypothetical StochasticModel m with two uncertainties.
+The right hand side of one of its
+constraints is random with a finite sample space of [1,2]. Besides, in the
+objective function, one of the coefficient is random with a finite sample space
+of [3,4]. Assume the joint distribution of the two uncertainties are given by the
+following table,
+
+=======  ===========
+samples  probability
+(1,3)    0.2
+(1,4)    0.3
+(2,3)    0.3
+(2,4)    0.2
+=======  ===========
+
+We can then add the two uncertainties and the probability measure by
+
+.. code-block:: python
+
+    m.addConstr(..., uncertainty={'rhs':[1,1,2,2]}
+    m.addVar(..., uncertainty=[3,4,3,4])
+    m.set_probability([0.2,0.3,0.3,0.2])
+
+Adding multiple stage-wise independent continuous uncertainties
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+When the problem has multiple continuous uncertainties, if those uncertainties
+are independent to each other, users can use the above routines to add them
+sequentially to the model by specifying their marginal distributions. Otherwise,
+users should use another routine, add_continuous_uncertainty, to directly add
+their joint distribution. For example, consider a hypothetical StochasticModel
+m with two uncertainties.
+The right hand side of one of its
+constraints is normally distributed with mean 0 and std 1. Besides, in the
+objective function, one of the coefficient is normally distributed with mean 0
+and std 1.
+
+If those two uncertainties are independent to each other, we can add
+the two uncertainties by
+
+.. code-block:: python
+
+    def f(random_state):
+        random_state.normal(0,1)
+    m.addConstr(..., uncertainty={'rhs':f}
+    m.addVar(..., uncertainty=f)
+
+If those two uncertainties are dependent and follow multivariate normal distribution
+with a correlation of 0.5 , we can add
+the two uncertainties by
+
+.. code-block:: python
+
+    def f(random_state):
+        random_state.multivariate_normal(
+            mean=[0,0],
+            cov=[
+                [1,0.5],
+                [0.5,1]
+            ]
+        )
+    a_constr = m.addConstr(...}
+    a_var = m.addVar(...)
+    def f(random_state):
+        random_state.normal(0,1)
+    m.add_continuous_uncertainty(uncertainty=f, locations=[a_constr, a_var])
 
 Module Reference
 ----------------
 The StochasticModel class
 ~~~~~~~~~~~~~~~~~~~~~~~~~
-.. currentmodule:: msppy.sp.StochasticModel
+.. currentmodule:: msppy.sp
+.. autoclass:: StochasticModel
+.. currentmodule:: msppy.msp.StochasticModel
+
 .. autofunction:: addStateVars
 .. autofunction:: addStateVar
 .. autofunction:: addVars
@@ -255,5 +376,8 @@ The MSLP class
 
 The MSIP class
 ~~~~~~~~~~~~~~
+.. currentmodule:: msppy.msp
+.. autoclass:: MSIP
 .. currentmodule:: msppy.msp.MSIP
+
 .. autofunction:: binarize

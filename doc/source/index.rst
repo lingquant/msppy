@@ -1,6 +1,6 @@
 Welcome to MSPPy's documentation!
 =================================
-MSPPy is a Python package that builds, solve and
+MSPPy is a Python package to build, solve and
 analyze multi-stage stochastic programs. The
 package is released under the open source Modified BSD (3-clause) license.
 

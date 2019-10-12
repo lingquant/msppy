@@ -7,10 +7,10 @@ __pycache__/
 *.so
 
 # locally developing stuff
-/doc/examples/**/*.py
-/doc/examples/**/*.sh
-/doc/examples/**/*.txt
-/doc/examples/**/*.lp
+/doc/**/*.py
+/doc/**/*.sh
+/doc/**/*.txt
+/doc/**/*.lp
 
 # Distribution / packaging
 .Python

@@ -11,48 +11,7 @@ import math
 
 
 class StochasticModel(object):
-    """Stochastic Gurobi model class. Methods on an ordinary Gurobi model
-    object can be referred by help(Model). Unique methods on this object are:
-
-    Methods
-    -------
-
-    addStateVar:
-        add a state variable to the model. Return the added state
-        variable and the created local copy variable.
-
-    addStateVars:
-        add state variables in bulk. Return the added state variables
-        and the created local copy variables.
-
-    addVars:
-        stochastic version of Model.addVars with an additional argument
-        to include related uncertainties in the objective.
-
-    addVar:
-        stochastic version of Model.addVar with an additional argument
-        to include related uncertainty in the objective.
-
-    addConstr:
-        stochastic version of Model.addConstr with an additional argument
-        to include related uncertainty in the constraints.
-
-    addConstrs:
-        stochastic version of Model.addConstrs with an additional argument
-        to include related uncertainty on the right hand sides of constraints.
-
-    copy:
-        make a deep copy of stochastic model.
-
-    relax:
-        make a relaxation of stochastic model.
-
-    set_probability:
-        set probability measure
-
-    add_continuous_uncertainty:
-        add stage-wise independent continuous uncertainties.
-    """
+    """The StochasticModel class"""
     def __init__(self, name=""):
         self._model = gurobipy.Model(env=gurobipy.Env(), name=name)
         # each and every instance must have state variables, local copy variables
@@ -467,21 +426,21 @@ class StochasticModel(object):
             self,
             *indices,
             lb=0.0,
-            ub=gurobipy.GRB.INFINITY,
+            ub=1e+100,
             obj=0.0,
-            vtype=gurobipy.GRB.CONTINUOUS,
+            vtype='C',
             name="",
             uncertainty=None,
             uncertainty_dependent=None
     ):
         """
-        Add state variables in bulk. Work similar to addVars() method,
-        with additional optional parameters uncertainty and uncertainty_dependent.
+        Add state variables in bulk. Generalize gurobipy.addVars() to
+        incorporate uncertainty in the objective function. Variables are added
+        as state variables and the corresponding local copy variables will be
+        added behind the scene
 
         Parameters
         ----------
-        *indices, lb, ub, obj, vtype, name:
-            work the same as the gurobipy.addVars() method.
 
         uncertainty: array-like, optional, default=None,
             The scenarios of stage-wise independent uncertain objective
@@ -498,7 +457,7 @@ class StochasticModel(object):
 
         Returns
         -------
-        a tuple of dicts ({}, {}): (state variables, local_copy variables)
+        (the created state variables, the corresponding local_copy variables): tuple
 
         Examples
         --------
@@ -560,24 +519,22 @@ class StochasticModel(object):
     def addStateVar(
             self,
             lb=0.0,
-            ub=gurobipy.GRB.INFINITY,
+            ub=1e+100,
             obj=0.0,
-            vtype=gurobipy.GRB.CONTINUOUS,
+            vtype='C',
             name="",
             column=None,
             uncertainty=None,
             uncertainty_dependent=None,
     ):
         """
-        Add a state variable to the model. Work similar to addVar() method,
-        with additional optional parameters uncertainty and
-        uncertainty_dependent.
+        Add a state variable to the model. Generalize gurobipy.addVar() to
+        incorporate uncertainty in the objective function. The variable is added
+        as a state variable and the corresponding local copy variable will be
+        added behind the scene
 
         Parameters
         ----------
-        lb, ub, obj, vtype, name, column:
-            work the same as the addVar() method.
-
         uncertainty: array-like, optional, default=None
             The scenarios of the stage-wise independent uncertain
             objective coefficient
@@ -593,7 +550,7 @@ class StochasticModel(object):
 
         Returns
         -------
-        a tuple ( , ): (the created state variable, local copy variable)
+        (the created state variable, the corresponding local copy variable): tuple
 
         Examples
         --------
@@ -639,22 +596,19 @@ class StochasticModel(object):
             self,
             *indices,
             lb=0.0,
-            ub=gurobipy.GRB.INFINITY,
+            ub=1e+100,
             obj=0.0,
-            vtype=gurobipy.GRB.CONTINUOUS,
+            vtype='C',
             name="",
             uncertainty=None,
             uncertainty_dependent=None
     ):
         """
-        Add variables in bulk. Work similar to addVars() method,
-        with additional optional parameters uncertainty and uncertainty_dependent.
+        Add variables in bulk. Generalize gurobipy.addVars() to
+        incorporate uncertainty in the objective function
 
         Parameters
         ----------
-        indices, lb, ub, obj, vtype, name:
-            work the same as the addVars() method.
-
         uncertainty: array-like, optional, default=None
             The scenarios of the stage-wise independent uncertain
             objective coefficients
@@ -662,7 +616,7 @@ class StochasticModel(object):
         uncertainty: callable, optional, default=None
             The multivariate random variable generator of stage-wise
             independent uncertain objective coefficients. The callable must
-            take numpy RandomState as its only argument.
+            take numpy RandomState as its only argument
 
         uncertainty_dependent: array-like, optional, default=None
             The locations index in the stochastic process generator of the
@@ -670,7 +624,7 @@ class StochasticModel(object):
 
         Returns
         -------
-        A dictionary of created variables
+        The created variables: list of gurobipy.Var
 
         Examples
         --------
@@ -733,24 +687,20 @@ class StochasticModel(object):
     def addVar(
             self,
             lb=0.0,
-            ub=gurobipy.GRB.INFINITY,
+            ub=1e+100,
             obj=0.0,
-            vtype=gurobipy.GRB.CONTINUOUS,
+            vtype='C',
             name="",
             column=None,
             uncertainty=None,
             uncertainty_dependent=None,
     ):
         """
-
-        Add a variable to the model. Work similar to addVar() method,
-        with additional optional parameters uncertainty and uncertainty_dependent.
+        Add a variable to the model. Generalize gurobipy.addVar() to
+        incorporate uncertainty in the objective function
 
         Parameters
         ----------
-        lb, ub, obj, vtype, name, column:
-            work the same as the addVar() method.
-
         uncertainty: array-like, optional, default=None
             The scenarios of the stage-wise independent uncertain
             objective coefficient
@@ -766,7 +716,7 @@ class StochasticModel(object):
 
         Returns
         -------
-        The created variable
+        The created variable: gurobipy.Var
 
         Examples
         --------
@@ -811,25 +761,22 @@ class StochasticModel(object):
             uncertainty=None,
             uncertainty_dependent=None,
     ):
-        """Add a constraint to the model. Work similar to addConstr() method,
-        with additional optional parameters uncertainty and uncertainty_dependent.
+        """Add a constraint to the model. Generalize gurobipy.addConstr()
+        to incorporate uncertainty in a constraint
 
         Parameters
         ----------
-        lhs, sense, rhs, name:
-            work the same as the addConstr() method.
-
         uncertainty: dict, optional, default=None
             The scenarios/univariate random variable generator of the
-            stage-wise independent uncertain constraint coefficient and RHS.
+            stage-wise independent uncertain constraint coefficient and RHS
 
         uncertainty_dependent: dict, optional, default=None
             The location index in the sample path genator of the stage-wise
-            dependent uncertain constraint coefficient and RHS.
+            dependent uncertain constraint coefficient and RHS
 
         Returns
         -------
-        The created constraint.
+        The created constraint: gurobipy.Constr
 
         Examples
         --------
@@ -856,7 +803,7 @@ class StochasticModel(object):
         ... )
 
         The above constraint contains a stage-wise independent uncertain
-        constraint coefficient and a Markovian RHS.
+        constraint coefficient and a Markovian RHS
         """
         constr = self._model.addConstr(lhs, sense=sense, rhs=rhs, name=name)
         self._model.update()
@@ -900,29 +847,26 @@ class StochasticModel(object):
     def addConstrs(
         self, generator, name="", uncertainty=None, uncertainty_dependent=None
     ):
-        """Add constraints with right-hand-side uncertainties in bulk to the
-        model. Work similar to addConstrs() method, with additional optional
-        parameter uncertainty and uncertainty_dependent to add RHS uncertainties.
+        """Add constraints in bulk to the model. Generalize gurobipy.addConstrs()
+        to incorporate uncertainty on the RHS of the constraints.
         If you want to add constraints with uncertainties on coefficients,
-        use addConstr() instead and add those constraints one by one.
+        use addConstr() instead and add those constraints one by one
 
         Parameters
         ----------
-        generator, name: work the same as the addConstrs() method.
-
         uncertainty: array-like/callable, optional, default=None
             The scenarios/multivariate random variable generator of the
             stage-wise independent uncertain RHS. A generator must take numpy
-            RandomState as its only argument.
+            RandomState as its only argument
 
         uncertainty_dependent: array-like, optional, default=None
             The locations in the sample path generator of the stage-wise
             independent uncertain RHS. A generator must take numpy
-            RandomState as its only argument.
+            RandomState as its only argument
 
         Returns
         -------
-        The created constraints
+        The created constraints: list of gurobipy.Constr
 
         Examples
         --------

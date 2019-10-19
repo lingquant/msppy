@@ -70,7 +70,7 @@ class MSLP(object):
             outputFlag=0,
             discount=1.0,
             ctg=False,
-            infinity=False,
+            infinity=0,
             **kwargs):
         if (T < 2
                 or discount > 1

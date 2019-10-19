@@ -1110,15 +1110,15 @@ class SDDP_infinity(SDDP):
         """Single forward step. """
         MSP = self.MSP
         T = MSP.T
-        forward_solution = [None for _ in range(T)]
+        forward_solution = [None for _ in range(MSP.infinity)]
         pv = 0
         query = [] if query is None else list(query)
         query_dual = [] if query_dual is None else list(query_dual)
-        solution = {item: numpy.full(T,numpy.nan) for item in query}
-        solution_dual = {item: numpy.full(T,numpy.nan) for item in query_dual}
-        stage_cost = numpy.full(T,numpy.nan)
+        solution = {item: numpy.full(MSP.infinity,numpy.nan) for item in query}
+        solution_dual = {item: numpy.full(MSP.infinity,numpy.nan) for item in query_dual}
+        stage_cost = numpy.full(MSP.infinity,numpy.nan)
         # time loop
-        for t in range(T):
+        for t in range(MSP.infinity):
             idx = t%MSP.period if (t%MSP.period != 0 or t == 0) else -1
             if MSP._type == "stage-wise independent":
 
@@ -1179,8 +1179,6 @@ class SDDP_infinity(SDDP):
         #! time loop
 
 
-        idx = numpy.arange(MSP.period)
-
         # method one
         # for t in range(1,MSP.T):
         #     indices = numpy.arange(t-1,T,MSP.T-1)
@@ -1195,17 +1193,33 @@ class SDDP_infinity(SDDP):
         #     return forward_solution_shuffled, pv
 
         # method two
-        pick_from_two = rand_int(2,random_state)
-        if pick_from_two == 1:
-            idx[0] = MSP.period
-        MSP.models[1]._update_link_constrs(forward_solution[idx[0]])
-        if MSP.T > MSP.period + 1:
-            for t in range(2, MSP.period+1):
-                MSP.models[t]._update_link_constrs(forward_solution[t-1])
-        forward_solution_shuffled = [forward_solution[item] for item in idx]
+
+        if MSP.infinity > MSP.period + 1:
+            indices = numpy.arange(0,MSP.infinity,MSP.period)
+            idx = indices[int(rand_int(
+                k=len(indices),
+                random_state=random_state,
+            ))]
+            for t in range(1, MSP.period+1):
+                MSP.models[t]._update_link_constrs(forward_solution[idx+t-1])
+            forward_solution = forward_solution[idx:idx+MSP.period]
+
+        # idx = numpy.arange(MSP.period)
+        # pick_from_two = rand_int(2,random_state)
+        # if pick_from_two == 1:
+        #     idx[0] = MSP.period
+        # MSP.models[1]._update_link_constrs(forward_solution[idx[0]])
+        #     for t in range(2, MSP.period+1):
+        #         indices = numpy.arange(t-1,MSP.infinity,MSP.period)
+        #         idx[t-1] = indices[int(rand_int(
+        #             k=len(indices),
+        #             random_state=random_state,
+        #         ))]
+        #         MSP.models[t]._update_link_constrs(forward_solution[idx[t-1]])
+        # forward_solution_shuffled = [forward_solution[item] for item in idx]
         if query == [] and query_dual == [] and query_stage_cost is None:
             return {
-                'forward_solution':forward_solution_shuffled,
+                'forward_solution':forward_solution,
                 'pv':pv
             }
         else:
@@ -1213,7 +1227,7 @@ class SDDP_infinity(SDDP):
                 'solution':solution,
                 'soultion_dual':solution_dual,
                 'stage_cost':stage_cost,
-                'forward_solution':forward_solution_shuffled,
+                'forward_solution':forward_solution,
                 'pv':pv
             }
 

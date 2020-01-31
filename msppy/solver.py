@@ -211,7 +211,7 @@ class SDDP(object):
             the cut coefficients and rhs.
         """
         MSP = self.MSP
-        for t in range(MSP.T-1, 0, -1):
+        for t in range(self.cut_T, 0, -1):
             if MSP.n_Markov_states == 1:
                 M, n_Markov_states = [MSP.models[t]], 1
             else:
@@ -226,10 +226,10 @@ class SDDP(object):
             objLP, gradLP = self._compute_cuts(t, m, objLPScen, gradLPScen)
             objLP -= numpy.matmul(gradLP, forward_solution[t-1])
             self._add_and_store_cuts(t, objLP, gradLP, cuts, "B", j)
-            self._add_cuts_additional_procedure(t, objLP, gradLP, cuts, "B", j)
+            self._add_cuts_additional_procedure(t, objLP, gradLP, objLPScen,
+            gradLPScen, forward_solution[t-1], cuts, "B", j)
 
-    def _add_cuts_additional_procedure(self, t, rhs, grad, cuts=None,
-            cut_type=None, j=None):
+    def _add_cuts_additional_procedure(*args, **kwargs):
         pass
 
     def _SDDP_single(self):
@@ -1031,15 +1031,18 @@ class SDDiP(SDDP):
                 objLP, gradLP = self._compute_cuts(t, m, objLPScen, gradLPScen)
                 objLP -= numpy.matmul(gradLP, forward_solution[t-1])
                 self._add_and_store_cuts(t, objLP, gradLP, cuts, "B", j)
-                self._add_cuts_additional_procedure(t, objLP, gradLP, cuts, "B", j)
+                self._add_cuts_additional_procedure(t, objLP, gradLP, objLPScen,
+                    gradLPScen, forward_solution[t-1], cuts, "B", j)
             if "SB" in self.cut_type_list[t-1]:
                 objSB, gradLP = self._compute_cuts(t, m, objSBScen, gradLPScen)
                 self._add_and_store_cuts(t, objSB, gradLP, cuts, "SB", j)
-                self._add_cuts_additional_procedure(t, objSB, gradLP, cuts, "SB", j)
+                self._add_cuts_additional_procedure(t, objSB, gradLP, objSBScen,
+                    gradLPScen, forward_solution[t-1], cuts, "SB", j)
             if "LG" in self.cut_type_list[t-1]:
                 objLG, gradLG = self._compute_cuts(t, m, objLGScen, gradLGScen)
                 self._add_and_store_cuts(t, objLG, gradLG, cuts, "LG", j)
-                self._add_cuts_additional_procedure(t, objLG, gradLG, cuts, "LG", j)
+                self._add_cuts_additional_procedure(t, objLG, gradLG, objLGScen,
+                    gradLGScen, forward_solution[t-1], cuts, "LG", j)
         #! Time iteration ends
 
     def _compute_cut_type_by_iteration(self):
@@ -1086,16 +1089,36 @@ class SDDP_infinity(SDDP):
         self.period = self.MSP.period
 
     def _add_cuts_additional_procedure(
-        self, t, rhs, grad, cuts=None, cut_type=None, j=None
+        self, t, rhs, grad, objScen, gradScen, fwdSoln, cuts=None, cut_type=None,
+        j=None
     ):
-        """Store cut information (rhs and grad) to cuts for the j th step, for cut
-        type cut_type and for stage t."""
+        if t != 1: return
         MSP = self.MSP
         if MSP.n_Markov_states == 1:
-            if t == 1:
-                MSP.models[-1]._add_cut(rhs, grad)
+            MSP.models[-1]._add_cut(rhs, grad)
+            if cuts is not None:
+                cuts[MSP.T-1][cut_type][j][:] = numpy.append(rhs, grad)
         else:
-            raise NotImplementedError
+            objScen = objScen.reshape(
+                MSP.n_Markov_states[1]*MSP.n_samples[1])
+            gradScen = gradScen.reshape(
+                MSP.n_Markov_states[1]*MSP.n_samples[1],MSP.n_states[1])
+            probability_ind = numpy.array([
+                m.probability if m.probability
+                else numpy.ones(m.n_samples)/m.n_samples
+                for m in MSP.models[1]
+            ])
+            probability = numpy.einsum('ij,jk->ijk',MSP.transition_matrix[-1],
+                probability_ind)
+            probability = probability.reshape(MSP.n_Markov_states[-1],
+                MSP.n_Markov_states[1]*MSP.n_samples[1])
+            for k,m in enumerate(MSP.models[-1]):
+                rhs_, grad_ = m._average(objScen, gradScen, probability[k])
+                if cut_type == 'B':
+                    rhs_ -= numpy.matmul(grad_, fwdSoln)
+                m._add_cut(rhs_, grad_)
+                if cuts is not None:
+                    cuts[MSP.T-1][cut_type][j][k][:] = numpy.append(rhs_, grad_)
 
     def _add_cut_from_multiprocessing_array_additional_procedure(self, cuts):
         for cut_type in self.cut_type_list[0]:

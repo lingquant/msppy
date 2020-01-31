@@ -119,15 +119,15 @@ class _Evaluation(object):
             The number of processes to run the simulation.
 
         T: int, optional (default=None)
-            For infinite horizon problem, how many stages to evaluate the policy.
+            For infinite horizon problem, the number stages to evaluate the policy.
         """
 
         from msppy.solver import SDDP, SDDP_infinity
         MSP = self.MSP
         # overwrite original specified number of stages
         if MSP.infinity and T:
-            T_original = MSP.T
-            MSP.T = T
+            eval_orig = MSP.infinity
+            MSP.infinity = T
             modified_horizon = True
         else:
             T = MSP.T
@@ -203,7 +203,7 @@ class _Evaluation(object):
             self.stage_cost = pandas.DataFrame(numpy.array(stage_cost))
         # recover original specified number of stages
         if MSP.infinity and modified_horizon:
-            MSP.T = T_original
+            MSP.infinity = eval_orig
 
     def run_single(self, pv, jobs, query=None, query_dual=None,
             query_stage_cost=False, stage_cost=None,

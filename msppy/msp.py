@@ -172,6 +172,8 @@ class MSLP(object):
         ...     ]
         ... )
         """
+        if self.infinity:
+            raise NotImplementedError
         if hasattr(self, "Markovian_uncertainty") or hasattr(self,"Markov_states"):
             raise ValueError("Markovian uncertainty has already added!")
         info = check_Markov_states_and_transition_matrix(
@@ -209,6 +211,8 @@ class MSLP(object):
         ...     return a
         >>> add_Markovian_uncertainty(f)
         """
+        if self.infinity:
+            raise NotImplementedError
         if hasattr(self, "Markovian_uncertainty") or hasattr(self,
         "Markov_states"):
             raise ValueError("Markovian uncertainty has already added!")

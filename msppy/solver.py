@@ -23,9 +23,11 @@ class SDDP(object):
     def __init__(self, MSP):
         self.db = []
         self.pv = []
-        self.cut_type = ["B"]
-        self.cut_type_list = [["B"] for t in range(MSP.T-1)]
         self.MSP = MSP
+        self.T = MSP.T
+        self.cut_T = MSP.T - 1
+        self.cut_type = ["B"]
+        self.cut_type_list = [["B"] for t in range(self.T)]
         self.iteration = 0
         self.n_processes = 1
         self.n_steps = 1
@@ -36,6 +38,12 @@ class SDDP(object):
             "<SDDP solver instance, {} processes, {} steps>"
             .format(self.n_processes, self.n_steps)
         )
+
+    def _compute_time_idx(t):
+        return t
+
+    def _select_trial_solution(forward_solution):
+        return forward_solution
 
     def _forward(
             self,
@@ -49,20 +57,21 @@ class SDDP(object):
             query_stage_cost=None):
         """Single forward step. """
         MSP = self.MSP
-        forward_solution = [None for _ in range(MSP.T)]
+        forward_solution = [None for _ in range(self.T)]
         pv = 0
         query = [] if query is None else list(query)
         query_dual = [] if query_dual is None else list(query_dual)
-        solution = {item: numpy.full(MSP.T,numpy.nan) for item in query}
-        solution_dual = {item: numpy.full(MSP.T,numpy.nan) for item in query_dual}
-        stage_cost = numpy.full(MSP.T,numpy.nan)
+        solution = {item: numpy.full(self.T,numpy.nan) for item in query}
+        solution_dual = {item: numpy.full(self.T,numpy.nan) for item in query_dual}
+        stage_cost = numpy.full(self.T,numpy.nan)
         # time loop
-        for t in range(MSP.T):
+        for t in range(self.T):
+            idx = self._compute_time_idx(t)
             if MSP._type == "stage-wise independent":
-                m = MSP.models[t]
+                m = MSP.models[idx]
             else:
                 if t == 0:
-                    m = MSP.models[t][0]
+                    m = MSP.models[idx][0]
                     state = 0
                 else:
                     if sample_path_idx is not None:
@@ -74,7 +83,7 @@ class SDDP(object):
                             range(MSP.n_Markov_states[t]),
                             p=MSP.transition_matrix[t][state]
                         )
-                    m = MSP.models[t][state]
+                    m = MSP.models[idx][state]
                     if markovian_idx is not None:
                         m._update_uncertainty_dependent(markovian_samples[t])
             if t > 0:
@@ -128,6 +137,7 @@ class SDDP(object):
             pv += MSP._get_stage_cost(m, t)
             if markovian_idx is not None:
                 m._update_uncertainty_dependent(MSP.Markov_states[t][markovian_idx[t]])
+        forward_solution = self._select_trial_solution(forward_solution)
         #! time loop
         if query == [] and query_dual == [] and query_stage_cost is None:
             return {
@@ -312,7 +322,7 @@ class SDDP(object):
             m.update()
 
     def _add_cut_from_multiprocessing_array(self, cuts):
-        for t in range(self.MSP.T-1):
+        for t in range(self.cut_T):
             for cut_type in self.cut_type_list[t]:
                 for cut in cuts[t][cut_type]:
                     if self.MSP.n_Markov_states == 1:
@@ -321,10 +331,6 @@ class SDDP(object):
                         for k in range(self.MSP.n_Markov_states[t]):
                             self.MSP.models[t][k]._add_cut(
                                 rhs=cut[k][0], gradient=cut[k][1:])
-        self._add_cut_from_multiprocessing_array_additional_procedure(cuts)
-
-    def _add_cut_from_multiprocessing_array_additional_procedure(self, cuts):
-        pass
 
     def _remove_redundant_cut(self, clean_stages):
         for t in clean_stages:
@@ -374,7 +380,7 @@ class SDDP(object):
                         [0] * (self.MSP.n_states[t]+1))
                         for _ in range(self.n_steps)]
                     for cut_type in self.cut_type_list[t]}
-            for t in range(self.MSP.T-1)}
+            for t in range(self.cut_T)}
         else:
             cuts = {
                 t:{
@@ -384,7 +390,7 @@ class SDDP(object):
                             for _ in range(self.MSP.n_Markov_states[t])]
                         for _ in range(self.n_steps)]
                     for cut_type in self.cut_type_list[t]}
-            for t in range(self.MSP.T-1)}
+            for t in range(self.cut_T)}
 
         pv = multiprocessing.Array("d", [0] * self.n_steps)
         lock = multiprocessing.Lock()
@@ -1064,15 +1070,20 @@ class SDDiP(SDDP):
         return cut_type
 
     def _compute_cut_type(self):
-        cut_type_list = [None] * (self.MSP.T-1)
+        cut_type_list = [None] * self.cut_T
         cut_type_by_iteration = self._compute_cut_type_by_iteration()
-        for t in range(1, self.MSP.T):
+        for t in range(1, self.cut_T+1):
             cut_type_list[t-1] = self._compute_cut_type_by_stage(
                 t, cut_type_by_iteration)
         self.cut_type_list = cut_type_list
 
 class SDDP_infinity(SDDP):
 
+    def __init__(self):
+        super().__init__()
+        self.T = self.MSP.infinity
+        self.cut_T = self.MSP.T
+        self.period = self.MSP.period
 
     def _add_cuts_additional_procedure(
         self, t, rhs, grad, cuts=None, cut_type=None, j=None
@@ -1097,153 +1108,22 @@ class SDDP_infinity(SDDP):
                 else:
                     raise NotImplementedError
 
-    def _forward(
-            self,
-            random_state=None,
-            sample_path_idx=None,
-            markovian_idx=None,
-            markovian_samples=None,
-            solve_true=False,
-            query=None,
-            query_dual=None,
-            query_stage_cost=None):
-        """Single forward step. """
-        MSP = self.MSP
-        T = MSP.T
-        forward_solution = [None for _ in range(MSP.infinity)]
-        pv = 0
-        query = [] if query is None else list(query)
-        query_dual = [] if query_dual is None else list(query_dual)
-        solution = {item: numpy.full(MSP.infinity,numpy.nan) for item in query}
-        solution_dual = {item: numpy.full(MSP.infinity,numpy.nan) for item in query_dual}
-        stage_cost = numpy.full(MSP.infinity,numpy.nan)
-        # time loop
-        for t in range(MSP.infinity):
-            idx = t%MSP.period if (t%MSP.period != 0 or t == 0) else -1
-            if MSP._type == "stage-wise independent":
+    def _compute_time_idx(t):
+        return t%self.period if (t%self.period != 0 or t == 0) else -1
 
-                m = MSP.models[idx]
-            else:
-                raise NotImplementedError
-            if t > 0:
-                m._update_link_constrs(forward_solution[t-1])
-                # exhaustive evaluation when the sample paths are given
-                if sample_path_idx is not None:
-                    if MSP._type == "stage-wise independent":
-                        scen = sample_path_idx[t]
-                    else:
-                        scen = sample_path_idx[0][t]
-                    m._update_uncertainty(scen)
-                # true stagewise independent randomness is infinite and solve
-                # for true
-                elif m._type == 'continuous' and solve_true:
-                    m._sample_uncertainty(random_state)
-                # true stagewise independent randomness is large and solve
-                # for true
-                elif m._type == 'discrete' and m._flag_discrete == 1 and solve_true:
-                    scen = rand_int(
-                        k=m.n_samples_discrete,
-                        probability=m.probability,
-                        random_state=random_state,
-                    )
-                    m._update_uncertainty(scen)
-                # other cases include
-                # 1: true stagewise independent randomness is infinite and solve
-                # for approximation problem
-                # 2: true stagewise independent randomness is large and solve
-                # for approximation problem
-                # 3: true stagewise independent randomness is small. In this
-                # case, true problem and approximation problem are the same.
-                else:
-                    scen = rand_int(
-                        k=m.n_samples,
-                        probability=m.probability,
-                        random_state=random_state,
-                    )
-                    m._update_uncertainty(scen)
-            m.optimize()
-            if m.status not in [2,11]:
-                m.write_infeasible_model("forward_" + str(m.modelName))
-            forward_solution[t] = MSP._get_forward_solution(m, t)
-            for var in m.getVars():
-                if var.varName in query:
-                    solution[var.varName][t] = var.X
-            for constr in m.getConstrs():
-                if constr.constrName in query_dual:
-                    solution_dual[constr.constrName][t] = constr.PI
-            if query_stage_cost:
-                stage_cost[t] = MSP._get_stage_cost(m, t)/pow(MSP.discount, t)
-            pv += MSP._get_stage_cost(m, t)
-            if markovian_idx is not None:
-                raise NotImplementedError
-        #! time loop
-
-
-        # method one
-        # for t in range(1,MSP.T):
-        #     indices = numpy.arange(t-1,T,MSP.T-1)
-        #     n_indices = len(indices)
-        #     idx[t-1] = indices[int(rand_int(
-        #         k=n_indices,
-        #         random_state=random_state,
-        #     ))]
-        #     MSP.models[t]._update_link_constrs(forward_solution[idx[t-1]])
-        # forward_solution_shuffled = [forward_solution[item] for item in idx]
-        # if query == [] and query_dual == [] and query_stage_cost is None:
-        #     return forward_solution_shuffled, pv
-
-        # method two
-
-        if MSP.infinity > MSP.period + 1:
-            indices = numpy.arange(0,MSP.infinity,MSP.period)
+    def _select_trial_solution(forward_solution):
+        # if solving more than one single period, only part of obtained solutions
+        # would be selected
+        if self.T > self.period + 1:
+            indices = numpy.arange(0, self.T, self.period)
             idx = indices[int(rand_int(
                 k=len(indices),
                 random_state=random_state,
             ))]
-            for t in range(1, MSP.period+1):
-                MSP.models[t]._update_link_constrs(forward_solution[idx+t-1])
-            forward_solution = forward_solution[idx:idx+MSP.period]
+            for t in range(1, self.period+1):
+                self.MSP.models[t]._update_link_constrs(forward_solution[idx+t-1])
+            return forward_solution[idx:idx+self.period]
 
-        # idx = numpy.arange(MSP.period)
-        # pick_from_two = rand_int(2,random_state)
-        # if pick_from_two == 1:
-        #     idx[0] = MSP.period
-        # MSP.models[1]._update_link_constrs(forward_solution[idx[0]])
-        #     for t in range(2, MSP.period+1):
-        #         indices = numpy.arange(t-1,MSP.infinity,MSP.period)
-        #         idx[t-1] = indices[int(rand_int(
-        #             k=len(indices),
-        #             random_state=random_state,
-        #         ))]
-        #         MSP.models[t]._update_link_constrs(forward_solution[idx[t-1]])
-        # forward_solution_shuffled = [forward_solution[item] for item in idx]
-        if query == [] and query_dual == [] and query_stage_cost is None:
-            return {
-                'forward_solution':forward_solution,
-                'pv':pv
-            }
-        else:
-            return {
-                'solution':solution,
-                'soultion_dual':solution_dual,
-                'stage_cost':stage_cost,
-                'forward_solution':forward_solution,
-                'pv':pv
-            }
-
-        # method four
-        # for t in range(1,MSP.T):
-        #     MSP.models[t]._update_link_constrs(forward_solution[t-1])
-        # if query == [] and query_dual == [] and query_stage_cost is None:
-        #     return forward_solution[:MSP.T-1], pv
-        # else:
-        #     return {
-        #         'solution':solution,
-        #         'soultion_dual':solution_dual,
-        #         'stage_cost':stage_cost,
-        #         'forward_solution':forward_solution,
-        #         'pv':pv
-        #     }
 
 class SDDiP_infinity(SDDP_infinity, SDDiP):
     pass

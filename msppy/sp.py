@@ -1043,9 +1043,9 @@ class StochasticModel(object):
                     samples[index]
                     for index in drawed_indices
                 ]
+            self.n_samples_discrete = self.n_samples
+            self.n_samples = n_samples
         self._flag_discrete = 1
-        self.n_samples_discrete = self.n_samples
-        self.n_samples = n_samples
 
     def _update_uncertainty(self, k):
         # Update model with the k^th stage-wise independent discrete uncertainty
@@ -1286,6 +1286,7 @@ class StochasticModel(object):
             uncertainty, flag_dict=1, list_dim=len(locations)
         )
         self.uncertainty_mix_continuous = {tuple(locations): uncertainty}
+        self._type = "continuous"
 
     def _record_discrete_uncertainty_to_cache(self):
         cache = {}

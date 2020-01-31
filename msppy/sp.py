@@ -1287,6 +1287,26 @@ class StochasticModel(object):
         )
         self.uncertainty_mix_continuous = {tuple(locations): uncertainty}
 
+    def _record_discrete_uncertainty_to_cache(self):
+        cache = {}
+        cache['uncertainty_coef'] = self.uncertainty_coef
+        cache['uncertainty_rhs'] = self.uncertainty_rhs
+        cache['uncertainty_obj'] = self.uncertainty_obj
+        cache['probability'] = self.probability
+        cache['n_samples'] = self.n_samples
+        return cache
+
+    def _remove_discrete_uncertainty(self):
+        self.uncertainty_coef = {}
+        self.uncertainty_rhs = {}
+        self.uncertainty_obj = {}
+        self.probability = None
+        self.n_samples = 1
+
+    def _recover_discrete_uncertainty_from_cache(self, cache):
+        for k,v in cache.items():
+            setattr(self, k, v)
+
     @property
     def controls(self):
         """Get control variables"""

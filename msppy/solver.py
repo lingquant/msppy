@@ -1539,3 +1539,99 @@ class Extensive(object):
                 stage_cost = new_stage_cost
             sample_paths = new_sample_paths
         # !end time loop
+
+class Extensive_rolling(object):
+
+    def __init__(self, MSP):
+        self.MSP = MSP
+
+    def solve_single_process(self, a, jobs, query, query_stage_cost, solution, stage_cost):
+        MSP = self.MSP
+        random_state = numpy.random.RandomState([2**32-1, jobs[0]])
+        another_random_state = numpy.random.RandomState(jobs[0])
+        for job in jobs:
+            cache = {}
+            for t in range(1, MSP.T):
+                cache[t] = MSP[t]._record_discrete_uncertainty_to_cache()
+            for cur in range(MSP.T-1):
+                print(job, cur)
+                for t in range(cur+2, MSP.T):
+                    m = MSP[t]
+                    scen = rand_int(
+                        k=m.n_samples,
+                        probability=m.probability,
+                        random_state=another_random_state,
+                    )
+                    m._update_uncertainty(scen)
+                    m._remove_discrete_uncertainty()
+                ext = Extensive(MSP)
+                ext.solve(outputFlag=0, start=cur)
+                if query is not None:
+                    sol = ext.first_stage_all_solution
+                    for k,v in sol.items():
+                        if k in query:
+                            solution[k][job][cur] = v
+                if query_stage_cost:
+                    stage_cost[job][cur] = ext.first_stage_cost
+                a[job] += MSP.discount ** cur * ext.first_stage_cost
+                MSP[cur]._delete_link_constrs()
+                if cur != 0:
+                    MSP[cur]._recover_discrete_uncertainty_from_cache(cache[cur])
+                MSP[cur+1]._set_up_link_constrs()
+                MSP[cur+1]._update_link_constrs(list(ext.first_stage_solution.values()))
+                if self.evaluate_true:
+                    MSP[cur+1]._sample_uncertainty(random_state)
+                else:
+                    MSP[cur+1]._update_uncertainty(self.sample_paths[job][cur+1])
+                MSP[cur+1]._remove_discrete_uncertainty()
+                for t in range(cur+2, MSP.T):
+                    MSP[t]._recover_discrete_uncertainty_from_cache(cache[t])
+            MSP[-1].optimize()
+            MSP[-1]._delete_link_constrs()
+            MSP[-1]._recover_discrete_uncertainty_from_cache(cache[MSP.T-1])
+            a[job] += MSP.discount ** (MSP.T-1) * MSP[-1].objVal
+            for var in MSP[-1].getVars():
+                if var.varname in query:
+                    solution[var.varname][job][MSP.T-1] = var.X
+            if query_stage_cost:
+                stage_cost[job][MSP.T-1] = MSP[-1].objVal
+
+    def solve(self, sample_paths, n_processes=1, query=None, query_stage_cost=False,
+    evaluate_true=0):
+        self.sample_paths = sample_paths
+        self.evaluate_true = evaluate_true
+        a = multiprocessing.Array("d", [0] * len(self.sample_paths))
+        procs = [None] * n_processes
+        jobs = allocate_jobs(len(sample_paths), n_processes)
+        query = query if query is not None else []
+        solution = stage_cost = None
+        if query is not None:
+            solution = {
+                item: [
+                    multiprocessing.RawArray("d",[0] * (self.MSP.T))
+                    for _ in range(len(self.sample_paths))
+                ]
+                for item in query
+            }
+        if query_stage_cost:
+            stage_cost = [
+                multiprocessing.RawArray("d",[0] * (self.MSP.T))
+                for _ in range(len(self.sample_paths))
+            ]
+        for p in range(n_processes):
+            procs[p] = multiprocessing.Process(
+                target=self.solve_single_process,
+                args=(a, jobs[p],query,query_stage_cost,solution,stage_cost)
+            )
+            procs[p].start()
+        for proc in procs:
+            proc.join()
+        if query is not None:
+            self.solution = {
+                k: pandas.DataFrame(
+                    numpy.array(v)
+                ) for k, v in solution.items()
+            }
+        if query_stage_cost:
+            self.stage_cost = pandas.DataFrame(numpy.array(stage_cost))
+        return [item for item in a]

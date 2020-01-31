@@ -810,38 +810,42 @@ class MSLP(object):
         return probability
 
 
-    def _enumerate_sample_paths(self, T):
+    def _enumerate_sample_paths(self, T, start=0):
         """Enumerate all sample paths (three cases: pure stage-wise independent
         , pure Markovian, and mixed type)"""
         if self.n_Markov_states == 1:
             n_sample_paths = numpy.prod(
-                [self.models[t].n_samples for t in range(T + 1)]
+                [self.models[t].n_samples for t in range(start, T+1)]
             )
             sample_paths = list(
-                product(
-                    *[range(self.models[t].n_samples) for t in range(T + 1)]
-                )
+                product(*(
+                    [[0]] * start
+                    + [range(self.models[t].n_samples) for t in range(start, T+1)]
+                ))
             )
         else:
             n_sample_paths = numpy.prod(
-                [self.models[t][0].n_samples for t in range(T + 1)]
+                [self.models[t][0].n_samples for t in range(start, T+1)]
             )
             sample_paths = list(
-                product(
-                    *[range(self.models[t][0].n_samples) for t in range(T + 1)]
-                )
+                product(*(
+                    [[0]] * start
+                    + [range(self.models[t][0].n_samples) for t in range(start, T+1)]
+                ))
             )
-            n_Markov_state_paths = numpy.prod([self.n_Markov_states])
+            n_Markov_state_paths = numpy.prod([self.n_Markov_states[start:]])
             Markov_state_paths = list(
-                product(
-                    *[range(self.n_Markov_states[t]) for t in range(T + 1)]
-                )
+                product(*(
+                    [[0]] * start
+                    + [range(self.n_Markov_states[t]) for t in range(start, T+1)]
+
+                ))
             )
             n_sample_paths = n_Markov_state_paths * n_sample_paths
             sample_paths = list(product(sample_paths, Markov_state_paths))
         return n_sample_paths, sample_paths
 
-    def _compute_weight_sample_path(self, sample_path):
+    def _compute_weight_sample_path(self, sample_path, start=0):
         """Compute weight/probability of (going through) a certain sample path."""
         probability = self._set_up_probability()
         T = (
@@ -851,21 +855,21 @@ class MSLP(object):
         )
         if self.n_Markov_states == 1:
             weight = numpy.prod(
-                [probability[t][sample_path[t]] for t in range(T)]
+                [probability[t][sample_path[t]] for t in range(start, T)]
             )
         else:
             weight = numpy.prod(
                 [
-                    self.transition_matrix[t][sample_path[1][t - 1]][
+                    self.transition_matrix[t][sample_path[1][t-1]][
                         sample_path[1][t]
                     ]
-                    for t in range(1, T)
+                    for t in range(start+1, T)
                 ]
             )
             weight *= numpy.prod(
                 [
                     probability[t][sample_path[1][t]][sample_path[0][t]]
-                    for t in range(T)
+                    for t in range(start, T)
                 ]
             )
         return weight

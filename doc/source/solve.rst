@@ -200,7 +200,7 @@ forward_T is set to be 10, meaning that the forward pass will solve the first
     res.gap
 
 Stopping criterion of the SDDP solver
-=====================================
+-------------------------------------
 
 SDDP algorithm is an iterative algorithm and thus we need to specify when
 to stop the algorithm. Besides simple numeric stopping criterion (max_iterations, max_time,
@@ -213,7 +213,7 @@ cannot estimate a good threshold for number of iterations or computational
 time. We need something else.
 
 Optimality gap
---------------
+~~~~~~~~~~~~~~
 
 The following snippet specifies an optimality-gap based stopping criteria.
 Specifically, the SDDP solver evaluates the obtained policy
@@ -233,7 +233,7 @@ will be stopped. We can see that the algorithm stops after 6 iterations.
     nvid_sddp.first_stage_solution
 
 Stabilization
--------------
+~~~~~~~~~~~~~
 
 The following snippet specifies a stabilization based stopping criteria.
 Specifically, the SDDP solver compares the policy every 1 iteration by computing the

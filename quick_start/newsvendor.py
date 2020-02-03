@@ -51,6 +51,6 @@ for t in range(T):
     if t == 0:
         m.addConstr(now == 5.0)
 Extensive(newsVendor).solve()
-newsVendor.set_AVaR(alpha_=0.6, lambda_=0.5)
+newsVendor.set_AVaR(a=0.6, l=0.5)
 Extensive(newsVendor).solve()
 SDDP(newsVendor).solve(max_iterations=100)

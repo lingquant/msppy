@@ -20,8 +20,7 @@ class MSLP(object):
     Parameters
     ----------
     T: integer (>1)
-        The number of stages for finite horizon problem. For infinite horizon
-        problem, T-1 gives the period.
+        The number of stages.
 
     bound: float, optional
         A known uniform lower bound or uppder bound (depending on optimization
@@ -41,10 +40,6 @@ class MSLP(object):
     ctg: bool, optional, default=0
         Whether to create ctg variable alpha for each stage (except the last stage)
         when initialization.
-
-    infinite: bool, optional, default=0
-        1 represents infinite horizon problem. Default value 0 indicates a
-        finite horizon problem.
 
     **kwargs: optional
         Gurobipy attributes to specify on individual StochasticModels. (e.g.,
@@ -70,7 +65,6 @@ class MSLP(object):
             outputFlag=0,
             discount=1.0,
             ctg=False,
-            infinity=0,
             **kwargs):
         if (T < 2
                 or discount > 1
@@ -94,9 +88,8 @@ class MSLP(object):
         self._flag_discrete = 0
         self._flag_update = 0
         self.db = None
-        self.infinity = infinity
+        self._flag_infinity = 0
         if ctg: self._set_up_CTG()
-        if infinity: self.period = T-1
 
     def __repr__(self):
         sense = 'Minimization' if self.sense == 1 else 'Maximization'
@@ -172,8 +165,6 @@ class MSLP(object):
         ...     ]
         ... )
         """
-        if self.infinity:
-            raise NotImplementedError
         if hasattr(self, "Markovian_uncertainty") or hasattr(self,"Markov_states"):
             raise ValueError("Markovian uncertainty has already added!")
         info = check_Markov_states_and_transition_matrix(
@@ -205,14 +196,14 @@ class MSLP(object):
         ...         a[:,t,:] = (
         ...             0.5 * numpy.array(a[:,t-1,:])
         ...             + random_state.multivariate_normal(
-        ...                 mean = [0,0],
-        ...                 cov = [[0,1],[1,0]])
+        ...                 mean=[0,0],
+        ...                 cov=[[0,1],[1,0]],
+        ...                 size=size,
+        ...                )
         ...         )
         ...     return a
         >>> add_Markovian_uncertainty(f)
         """
-        if self.infinity:
-            raise NotImplementedError
         if hasattr(self, "Markovian_uncertainty") or hasattr(self,
         "Markov_states"):
             raise ValueError("Markovian uncertainty has already added!")
@@ -555,8 +546,7 @@ class MSLP(object):
                         m.update()
 
     def _set_up_CTG(self):
-        T = self.T if self.infinity else self.T - 1
-        for t in range(T):
+        for t in range(self.T-1):
             # MC model may already do model copies
             M = (
                 [self.models[t]]
@@ -633,17 +623,14 @@ class MSLP(object):
         """
         if isinstance(l, (abc.Sequence, numpy.ndarray)):
             if len(l) not in [self.T-1, self.T]:
-                raise ValueError("Length of l must be T-1!")
+                raise ValueError("Length of l must be T-1/T!")
             if not all(item <= 1 and item >= 0 for item in l):
                 raise ValueError("l must be between 0 and 1!")
             l = [None] + list(l)
         elif isinstance(l, (numbers.Number)):
             if l > 1 or l < 0:
                 raise ValueError("l must be between 0 and 1!")
-            if not self.infinity:
-                l = [None] + [l] * (self.T-1)
-            else:
-                l = [None] + [l] * self.T
+            l = [None] + [l] * (self.T-1)
         else:
             raise TypeError("l should be float/array-like instead of \
             {}!".format(type(l)))
@@ -656,10 +643,7 @@ class MSLP(object):
         elif isinstance(a, (numbers.Number)):
             if a > 1 or a < 0:
                 raise ValueError("a must be between 0 and 1!")
-            if not self.infinity:
-                a = [None] + [a] * (self.T-1)
-            else:
-                a = [None] + [a] * self.T
+            a = [None] + [a] * (self.T-1)
         else:
             raise TypeError("a should be float/array-like instead of \
             {}!".format(type(a)))
@@ -816,7 +800,7 @@ class MSLP(object):
 
     def _enumerate_sample_paths(self, T, start=0):
         """Enumerate all sample paths (three cases: pure stage-wise independent
-        , pure Markovian, and mixed type)"""
+        , pure Markovian, and mixed type); T inclusive."""
         if self.n_Markov_states == 1:
             n_sample_paths = numpy.prod(
                 [self.models[t].n_samples for t in range(start, T+1)]

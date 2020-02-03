@@ -206,13 +206,16 @@ The program can also be binarized (this is useful for tighter cuts).
 
 Infinite horizon problems
 -------------------------
-Infinite horizon problem can be built by specifying infinity argument to be True.
+Infinite horizon problem can be built using exactly the same
+syntax. In the following snippet, the period is 2 stages, and
+hence the number of stages to consider is 3. (Recall that we
+have a deterministic first stage).
 
 .. code-block:: python
 
     from msppy.msp import MSLP
     rhs = [[0,2,4,6,8],[1,3,5,7,9]]
-    nvidinf = MSLP(T=3, discount=0.9, sense=-1, bound=20, infinity=True)
+    nvidinf = MSLP(T=3, discount=0.9, sense=-1, bound=20)
     for t in range(3):
         m = nvidinf[t]
         if t == 0:

@@ -158,14 +158,24 @@ class LoggerEvaluation(Logger):
 
     def text(self, iteration, db, time, pv=None, CI=None, gap=None):
         if self.n_simulations > 1:
+            format = "{:>12d}{:>20f}{:>19f}, {:<19f}{:>12f}"
+            if gap in [-1, None]:
+                format += "{:>12}"
+            else:
+                format += "{:>12.2%}"
             self.logger.info(
-                "{:>12d}{:>20f}{:>19f}, {:<19f}{:>12f}{:>12}".format(
+                format.format(
                     iteration, db, CI[0], CI[1], time, gap
                 )
             )
         else:
+            format = "{:>12d}{:>20f}{:>20f}{:>12f}"
+            if gap in [-1, None]:
+                format += "{:>12}"
+            else:
+                format += "{:>12.2%}"
             self.logger.info(
-                "{:>12d}{:>20f}{:>20f}{:>12f}{:>12}".format(
+                format.format(
                     iteration, db, pv, time, gap
                 )
             )

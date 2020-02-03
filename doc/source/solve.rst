@@ -179,7 +179,11 @@ provided are Benders' cut, strengthened Benders' cut and Lagaragian cut.
 Infinite horizon problem
 ------------------------
 
-SDDP_infinity solver can solve infinite horizon MSLP problem.
+SDDP_infinity solver use periodical SDDP algorithm to solve MSLP problems.
+Recall that we have constructed a 3-stage MSLP with period of 2 stages.
+So the backward pass will add cuts to these 3 stages. In the following snippet,
+forward_T is set to be 10, meaning that the forward pass will solve the first
+10 stages and select trial solutions.
 
 .. code-block:: python
 
@@ -187,7 +191,7 @@ SDDP_infinity solver can solve infinite horizon MSLP problem.
     from msppy.solver import SDDP_infinity
     nvidinf = construct_nvidinf()
     nvidinf_sddp = SDDP_infinity(nvidinf)
-    nvidinf_sddp.solve(max_iterations=10)
+    nvidinf_sddp.solve(max_iterations=10, forward_T=10)
     nvidinf_sddp.db[-1]
     nvidinf_sddp.first_stage_solution
     from msppy.evaluation import Evaluation

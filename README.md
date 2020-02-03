@@ -16,5 +16,10 @@ Some tiny-scale problems can be found in the quick_start folder. The purpose of 
 Three real-world large-scale examples--power system planning, portfolio optimization, airline revenue management, can be found in the examples folder. For more details, users are referred to the paper linked below.
 ## Documentations
 https://msppy.readthedocs.io/en/latest/
+## Support
+Python 3+, Gurobi 7/8, Linux/MacOS. 
+Support for Gurobi 9 and Windows are not currently supported.
 ## Citing MSPPy
-If you use MSPPy in a publication, please cite this [paper](http://www.optimization-online.org/DB_HTML/2019/05/7199.html)
+If you use MSPPy in general in a publication, please cite this [paper](http://www.optimization-online.org/DB_HTML/2019/05/7199.html);
+If you use Periodical SDDP, please also cite this [paper](http://www.optimization-online.org/DB_HTML/2019/09/7367.html);
+

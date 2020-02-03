@@ -24,10 +24,10 @@ class SDDP(object):
         self.db = []
         self.pv = []
         self.MSP = MSP
-        self.T = MSP.T
+        self.forward_T = MSP.T
         self.cut_T = MSP.T - 1
         self.cut_type = ["B"]
-        self.cut_type_list = [["B"] for t in range(self.T)]
+        self.cut_type_list = [["B"] for t in range(self.forward_T)]
         self.iteration = 0
         self.n_processes = 1
         self.n_steps = 1
@@ -35,14 +35,14 @@ class SDDP(object):
 
     def __repr__(self):
         return (
-            "<SDDP solver instance, {} processes, {} steps>"
-            .format(self.n_processes, self.n_steps)
+            "<{} solver instance, {} processes, {} steps>"
+            .format(self.__class__, self.n_processes, self.n_steps)
         )
 
-    def _compute_time_idx(t):
+    def _compute_time_idx(self, t):
         return t
 
-    def _select_trial_solution(forward_solution):
+    def _select_trial_solution(self, random_state, forward_solution):
         return forward_solution
 
     def _forward(
@@ -57,15 +57,15 @@ class SDDP(object):
             query_stage_cost=None):
         """Single forward step. """
         MSP = self.MSP
-        forward_solution = [None for _ in range(self.T)]
+        forward_solution = [None for _ in range(self.forward_T)]
         pv = 0
         query = [] if query is None else list(query)
         query_dual = [] if query_dual is None else list(query_dual)
-        solution = {item: numpy.full(self.T,numpy.nan) for item in query}
-        solution_dual = {item: numpy.full(self.T,numpy.nan) for item in query_dual}
-        stage_cost = numpy.full(self.T,numpy.nan)
+        solution = {item: numpy.full(self.forward_T,numpy.nan) for item in query}
+        solution_dual = {item: numpy.full(self.forward_T,numpy.nan) for item in query_dual}
+        stage_cost = numpy.full(self.forward_T,numpy.nan)
         # time loop
-        for t in range(self.T):
+        for t in range(self.forward_T):
             idx = self._compute_time_idx(t)
             if MSP._type == "stage-wise independent":
                 m = MSP.models[idx]
@@ -137,7 +137,7 @@ class SDDP(object):
             pv += MSP._get_stage_cost(m, t)
             if markovian_idx is not None:
                 m._update_uncertainty_dependent(MSP.Markov_states[t][markovian_idx[t]])
-        forward_solution = self._select_trial_solution(forward_solution)
+        forward_solution = self._select_trial_solution(random_state, forward_solution)
         #! time loop
         if query == [] and query_dual == [] and query_stage_cost is None:
             return {
@@ -211,7 +211,7 @@ class SDDP(object):
             the cut coefficients and rhs.
         """
         MSP = self.MSP
-        for t in range(self.cut_T, 0, -1):
+        for t in range(MSP.T-1, 0, -1):
             if MSP.n_Markov_states == 1:
                 M, n_Markov_states = [MSP.models[t]], 1
             else:
@@ -434,10 +434,10 @@ class SDDP(object):
             n_simulations=3000,
             n_simulations_true=3000,
             query=None,
+            query_T=None,
             query_dual=None,
             query_stage_cost=False,
             query_policy_value=False,
-            T=None,
             freq_clean=None,
             logFile=1,
             logToConsole=1,
@@ -657,11 +657,11 @@ class SDDP(object):
                     evaluation.run(
                         n_simulations=n_simulations,
                         query=query,
+                        query_T=query_T,
                         query_dual=query_dual,
                         query_stage_cost=query_stage_cost,
                         percentile=percentile,
                         n_processes=n_processes,
-                        T=T
                     )
                     if query_policy_value:
                         pandas.DataFrame(evaluation.pv).to_csv(directory+
@@ -682,11 +682,11 @@ class SDDP(object):
                         evaluationTrue.run(
                             n_simulations=n_simulations,
                             query=query,
+                            query_T=query_T,
                             query_dual=query_dual,
                             query_stage_cost=query_stage_cost,
                             percentile=percentile,
                             n_processes=n_processes,
-                            T=T
                         )
                         if query_policy_value:
                             pandas.DataFrame(evaluationTrue.pv).to_csv(directory+
@@ -856,62 +856,6 @@ class SDDiP(SDDP):
 
         Parameters
         ----------
-        n_processes: int, optional (default=1)
-            The number of processes to run in parallel. Run serial SDDP if 1.
-            If n_steps is 1, n_processes is coerced to be 1.
-
-        n_steps: int, optional (default=1)
-            The number of forward/backward steps to run in each cut iteration.
-            It is coerced to be 1 if n_processes is 1.
-
-        max_iterations: int, optional (default=10000)
-            The maximum number of iterations to run SDDP.
-
-        max_stable_iterations: int, optional (default=10000)
-            The maximum number of iterations to have the same deterministic bound
-
-        tol: float, optional (default=1e-3)
-            tolerance for convergence of bounds
-
-        freq_evaluations: int, optional (default=None)
-            The frequency of evaluating gap on approximation model. It will be
-            ignored if risk averse
-
-        percentile: float, optional (default=95)
-            The percentile used to compute confidence interval
-
-        diff: float, optional (default=-inf)
-            The stabilization threshold
-
-        freq_comparisons: int, optional (default=None)
-            The frequency of comparisons of policies
-
-        n_simulations: int, optional (default=10000)
-            The number of simluations to run when evaluating a policy
-            on approximation model
-
-        freq_clean: int/list, optional (default=None)
-            The frequency of removing redundant cuts.
-            If int, perform cleaning at the same frequency for all stages.
-            If list, perform cleaning at different frequency for each stage;
-            must be of length T-1 (the last stage does not have any cuts).
-
-        random_state: int, RandomState instance or None, optional (default=None)
-            Used in evaluations and comparisons. (In the forward step, there is
-            an internal random_state which is not supposed to be changed.)
-            If int, random_state is the seed used by the random number
-            generator;
-            If RandomState instance, random_state is the random number
-            generator;
-            If None, the random number generator is the RandomState
-            instance used by numpy.random.
-
-        logFile: binary, optional (default=1)
-            Switch of logging to log file
-
-        logToConsole: binary, optional (default=1)
-            Switch of logging to console
-
         cuts: list
             Entries of the list could be 'B','SB','LG'
 
@@ -1082,11 +1026,29 @@ class SDDiP(SDDP):
 
 class SDDP_infinity(SDDP):
 
-    def __init__(self):
-        super().__init__()
-        self.T = self.MSP.infinity
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.forward_T = self.MSP.T
         self.cut_T = self.MSP.T
-        self.period = self.MSP.period
+        self.period = self.MSP.T-1
+
+    def solve(self, forward_T=None, *args, **kwargs):
+        """Solve approximation model.
+
+        Parameters
+        ----------
+        forward_T: int, optional 
+            The number of stages to consider in forward passes and trial point 
+            selection
+        """
+        if self.MSP._type == "Markov chain":
+            raise NotImplementedError
+        if forward_T: self.forward_T = forward_T
+        self.MSP[-1]._set_up_CTG(discount=self.MSP.discount, 
+            bound=self.MSP.bound)
+        self.MSP._flag_infinity = 1
+        super().solve(*args, **kwargs)
+
 
     def _add_cuts_additional_procedure(
         self, t, rhs, grad, objScen, gradScen, fwdSoln, cuts=None, cut_type=None,
@@ -1131,14 +1093,14 @@ class SDDP_infinity(SDDP):
                 else:
                     raise NotImplementedError
 
-    def _compute_time_idx(t):
+    def _compute_time_idx(self, t):
         return t%self.period if (t%self.period != 0 or t == 0) else -1
 
-    def _select_trial_solution(forward_solution):
+    def _select_trial_solution(self, random_state, forward_solution):
         # if solving more than one single period, only part of obtained solutions
         # would be selected
-        if self.T > self.period + 1:
-            indices = numpy.arange(0, self.T, self.period)
+        if self.forward_T > self.period + 1:
+            indices = numpy.arange(0, self.forward_T, self.period)
             idx = indices[int(rand_int(
                 k=len(indices),
                 random_state=random_state,
@@ -1146,6 +1108,7 @@ class SDDP_infinity(SDDP):
             for t in range(1, self.period+1):
                 self.MSP.models[t]._update_link_constrs(forward_solution[idx+t-1])
             return forward_solution[idx:idx+self.period]
+        return forward_solution
 
 
 class SDDiP_infinity(SDDP_infinity, SDDiP):
@@ -1457,7 +1420,6 @@ class Extensive_rolling(object):
             for t in range(1, MSP.T):
                 cache[t] = MSP[t]._record_discrete_uncertainty_to_cache()
             for cur in range(MSP.T-1):
-                print(job, cur)
                 for t in range(cur+2, MSP.T):
                     m = MSP[t]
                     scen = rand_int(

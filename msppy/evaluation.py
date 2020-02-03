@@ -91,9 +91,9 @@ class _Evaluation(object):
             n_simulations,
             percentile=95,
             query=None,
+            query_T=None,
             query_dual=None,
             query_stage_cost=False,
-            T=None,
             n_processes=1,):
         """Run a Monte Carlo simulation to evaluate the policy.
 
@@ -124,33 +124,25 @@ class _Evaluation(object):
 
         from msppy.solver import SDDP, SDDP_infinity
         MSP = self.MSP
-        # overwrite original specified number of stages
-        if MSP.infinity and T:
-            eval_orig = MSP.infinity
-            MSP.infinity = T
-            modified_horizon = True
-        else:
-            T = MSP.T
-            modified_horizon = False
-
-        if not MSP.infinity:
+        query_T = query_T if query_T else MSP.T
+        if not MSP._flag_infinity:
             self.solver = SDDP(MSP)
         else:
             self.solver = SDDP_infinity(MSP)
+            self.solver.forward_T = query_T
         self.n_simulations = n_simulations
-        query_stage_cost = query_stage_cost
-        self._compute_sample_path_idx_and_markovian_path()
+        self._compute_sample_path_idx_and_markovian_path(query_T)
         self.pv = numpy.zeros(self.n_sample_paths)
         stage_cost = solution = solution_dual = None
         if query_stage_cost:
             stage_cost = [
-                multiprocessing.RawArray("d",[0] * (T))
+                multiprocessing.RawArray("d",[0] * (query_T))
                 for _ in range(self.n_sample_paths)
             ]
         if query is not None:
             solution = {
                 item: [
-                    multiprocessing.RawArray("d",[0] * (T))
+                    multiprocessing.RawArray("d",[0] * (query_T))
                     for _ in range(self.n_sample_paths)
                 ]
                 for item in query
@@ -158,11 +150,12 @@ class _Evaluation(object):
         if query_dual is not None:
             solution_dual = {
                 item: [
-                    multiprocessing.RawArray("d",[0] * (T))
+                    multiprocessing.RawArray("d",[0] * (query_T))
                     for _ in range(self.n_sample_paths)
                 ]
                 for item in query_dual
             }
+        n_processes = min(self.n_sample_paths, n_processes)
         jobs = allocate_jobs(self.n_sample_paths, n_processes)
         pv = multiprocessing.Array("d", [0] * self.n_sample_paths)
         procs = [None] * n_processes
@@ -175,7 +168,10 @@ class _Evaluation(object):
             procs[p].start()
         for proc in procs:
             proc.join()
-        self.pv = [item for item in pv]
+        if self.n_simulations != 1:
+            self.pv = [item for item in pv]
+        else:
+            self.pv = pv[0]
         if self.n_simulations == -1:
             self.epv = numpy.dot(
                 pv,
@@ -201,9 +197,6 @@ class _Evaluation(object):
             }
         if query_stage_cost:
             self.stage_cost = pandas.DataFrame(numpy.array(stage_cost))
-        # recover original specified number of stages
-        if MSP.infinity and modified_horizon:
-            MSP.infinity = eval_orig
 
     def run_single(self, pv, jobs, query=None, query_dual=None,
             query_stage_cost=False, stage_cost=None,
@@ -245,9 +238,9 @@ class Evaluation(_Evaluation):
     def run(self, *args, **kwargs):
         super().run(*args, **kwargs)
 
-    def _compute_sample_path_idx_and_markovian_path(self):
+    def _compute_sample_path_idx_and_markovian_path(self, T):
         if self.n_simulations == -1:
-            self.n_sample_paths,self.sample_path_idx = self.MSP._enumerate_sample_paths(self.MSP.T-1)
+            self.n_sample_paths,self.sample_path_idx = self.MSP._enumerate_sample_paths(T-1)
         else:
             self.n_sample_paths = self.n_simulations
 
@@ -268,21 +261,21 @@ class EvaluationTrue(Evaluation):
             return super().run(*args, **kwargs)
         return _Evaluation.run(self, *args, **kwargs)
 
-    def _compute_sample_path_idx_and_markovian_path(self):
+    def _compute_sample_path_idx_and_markovian_path(self, T):
         MSP = self.MSP
         if (
             MSP._type in ["stage-wise independent", "Markov chain"]
             and MSP._individual_type == "original"
             and not hasattr(MSP,"bin_stage")
         ):
-            return super()._compute_sample_path_idx_and_markovian_path()
+            return super()._compute_sample_path_idx_and_markovian_path(T)
         self.n_sample_paths = self.n_simulations
         self.solve_true = True
         if MSP._type == "Markovian":
             self.markovian_samples = MSP.Markovian_uncertainty(
                 numpy.random.RandomState(2**32-1),self.n_simulations)
-            self.markovian_idx = numpy.zeros([self.n_simulations,MSP.T],dtype=int)
-            for t in range(1,MSP.T):
+            self.markovian_idx = numpy.zeros([self.n_simulations,T],dtype=int)
+            for t in range(1,T):
                 dist = numpy.empty([self.n_simulations,MSP.n_Markov_states[t]])
                 for idx, markov_state in enumerate(MSP.Markov_states[t]):
                     temp = self.markovian_samples[:,t,:] - markov_state

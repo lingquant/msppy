@@ -123,15 +123,12 @@ def check_Markovian_uncertainty(Markovian_uncertainty, T):
     return dim_Markov_states
 
 def allocate_jobs(n_forward_samples, n_processes):
-    if n_forward_samples - n_processes == 1:
-        return [[i] for i in range(n_processes-1)] + [range(n_processes-1,n_forward_samples)]
-    chunk = (
-        int(n_forward_samples / n_processes)
-        if n_forward_samples % n_processes == 0
-        else int(n_forward_samples / n_processes) + 1
-    )
+    chunk = int(n_forward_samples / n_processes)
     division = list(range(0, n_forward_samples, chunk))
-    division.append(n_forward_samples)
+    if n_forward_samples % n_processes == 0:
+        division.append(n_forward_samples)
+    else:
+        division[-1] = n_forward_samples
     return [range(division[p], division[p + 1]) for p in range(n_processes)]
 
 def fit(array, convex=1):

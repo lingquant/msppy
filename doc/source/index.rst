@@ -34,8 +34,9 @@ today?
     print(sddp.first_stage_solution)
     # evaluate the solution
     result = Evaluation(nvid)
-    result.run(n_simulations=-1)
-    print(result.gap)
+    result.run(n_simulations=-1, query=['sold'])
+    result.gap
+    result.solution['sold']
 
 Get started
 ===========
@@ -46,6 +47,7 @@ Get started
    Build the true problem <construct>
    Discretize the true problem <discretize>
    Solve the true problem <solve>
+   Evaluate the obtained policy <evaluate.ipynb>
    Real world applications <applications>
 
 

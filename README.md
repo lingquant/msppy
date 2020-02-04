@@ -17,8 +17,8 @@ Three real-world large-scale examples--power system planning, portfolio optimiza
 ## Documentations
 https://msppy.readthedocs.io/en/latest/
 ## Support
-Python 3+, Gurobi 7/8, Linux/MacOS. 
-Support for Gurobi 9 and Windows are not currently supported.
+Python 3+, Gurobi 7+, Linux/MacOS. 
+Support for Windows is not currently supported.
 ## Citing MSPPy
 If you use MSPPy in general in a publication, please cite this [paper](http://www.optimization-online.org/DB_HTML/2019/05/7199.html);
 If you use Periodical SDDP, please also cite this [paper](http://www.optimization-online.org/DB_HTML/2019/09/7367.html);

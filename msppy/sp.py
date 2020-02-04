@@ -834,7 +834,7 @@ class StochasticModel(object):
                 # key can be a gurobipy.Var or "rhs"
                 # Append constr to the key
                 if type(key) == gurobipy.Var:
-                    if key not in self._model.getVars():
+                    if not any(key is item for item in self._model.getVars()):
                         raise ValueError("wrong uncertainty key!")
                     self.uncertainty_coef_dependent[(constr, key)] = value
                 elif type(key) == str and key.lower() == "rhs":

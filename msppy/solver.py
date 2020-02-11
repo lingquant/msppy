@@ -590,7 +590,7 @@ class SDDP(object):
                 and total_time < max_time
                 and stable_iterations < max_stable_iterations
                 and tol < gap
-                and tol_diff < right_end_of_CI
+                and (tol_diff < right_end_of_CI or right_end_of_CI < 0)
             ):
                 start = time.time()
 
@@ -1037,14 +1037,14 @@ class SDDP_infinity(SDDP):
 
         Parameters
         ----------
-        forward_T: int, optional 
-            The number of stages to consider in forward passes and trial point 
+        forward_T: int, optional
+            The number of stages to consider in forward passes and trial point
             selection
         """
         if self.MSP._type == "Markov chain":
             raise NotImplementedError
         if forward_T: self.forward_T = forward_T
-        self.MSP[-1]._set_up_CTG(discount=self.MSP.discount, 
+        self.MSP[-1]._set_up_CTG(discount=self.MSP.discount,
             bound=self.MSP.bound)
         self.MSP._flag_infinity = 1
         super().solve(*args, **kwargs)

@@ -27,7 +27,7 @@ class SDDP(object):
         self.forward_T = MSP.T
         self.cut_T = MSP.T - 1
         self.cut_type = ["B"]
-        self.cut_type_list = [["B"] for t in range(self.forward_T)]
+        self.cut_type_list = [["B"] for t in range(self.cut_T)]
         self.iteration = 0
         self.n_processes = 1
         self.n_steps = 1
@@ -43,7 +43,7 @@ class SDDP(object):
         return t
 
     def _select_trial_solution(self, random_state, forward_solution):
-        return forward_solution
+        return forward_solution[:-1]
 
     def _forward(
             self,
@@ -122,6 +122,9 @@ class SDDP(object):
                         random_state=random_state,
                     )
                     m._update_uncertainty(scen)
+            if self.iteration != 0 and self.rgl_a != 0:
+                m.regularize(self.rgl_center[t], self.rgl_norm, self.rgl_a,
+                self.rgl_b, self.iteration)
             m.optimize()
             if m.status not in [2,11]:
                 m.write_infeasible_model("forward_" + str(m.modelName))
@@ -137,7 +140,8 @@ class SDDP(object):
             pv += MSP._get_stage_cost(m, t)
             if markovian_idx is not None:
                 m._update_uncertainty_dependent(MSP.Markov_states[t][markovian_idx[t]])
-        forward_solution = self._select_trial_solution(random_state, forward_solution)
+            if self.iteration != 0 and self.rgl_a != 0:
+                m._deregularize()
         #! time loop
         if query == [] and query_dual == [] and query_stage_cost is None:
             return {
@@ -237,13 +241,11 @@ class SDDP(object):
         # random_state is constructed by number of iteration.
         random_state = numpy.random.RandomState(self.iteration)
         temp = self._forward(random_state)
-        forward_solution = temp['forward_solution']
+        solution = temp['forward_solution']
         pv = temp['pv']
-        self._deregularize()
-        self._backward(forward_solution)
-        # regularization needs to store last forward_solution
-        if self.regularization_param != 0:
-            self.forward_solution = forward_solution
+        self.rgl_center = solution
+        solution = self._select_trial_solution(random_state, solution)
+        self._backward(solution)
         return [pv]
 
     def _SDDP_single_process(self, pv, jobs, lock, cuts, forward_solution=None):
@@ -257,69 +259,14 @@ class SDDP(object):
             temp = self._forward(random_state)
             solution = temp['forward_solution']
             pv[j] = temp['pv']
-            self._deregularize()
-            self._backward(solution, j, lock, cuts)
             # regularization needs to store last forward_solution
-            if j == jobs[-1] and self.regularization_param != 0:
-                for t in range(self.MSP.T-1):
-                    for i in range(self.MSP[t].n_states):
+            if j == jobs[-1] and self.rgl_a != 0:
+                for t in range(self.forward_T):
+                    idx = self._compute_time_idx(t)
+                    for i in range(self.MSP.n_states[idx]):
                         forward_solution[t][i] = solution[t][i]
-
-    def _regularize(self):
-        if self.regularization_param == 0 or self.iteration == 0: return
-        MSP = self.MSP
-        for t in range(MSP.T):
-            m = MSP.models[t]
-            regularization = m.addVar(
-                lb=0,
-                obj=MSP.sense*self.regularization_param*0.99**self.iteration,
-                name='regularization_{}'.format(self.iteration)
-            )
-            if self.regularization_type == 'L1':
-                m.addConstrs(
-                    (regularization >= m.states[i] - self.forward_solution[t][i]
-                    for i in range(m.n_states)),
-                    name = 'regularization_{}'.format(self.iteration)
-                )
-            elif self.regularization_type == 'L2':
-                m.addQConstr(
-                    regularization -
-                    gurobipy.QuadExpr(
-                        gurobipy.quicksum([
-                            m.states[i] * m.states[i]
-                            - m.states[i] * 2 * self.forward_solution[t][i]
-                            for i in range(m.n_states)
-                        ])
-                    )
-                    >=0,
-                    name = 'regularization_{}'.format(self.iteration)
-                )
-            else:
-                raise NotImplementedError
-            m.update()
-
-
-    def _deregularize(self):
-        if self.regularization_param == 0 or self.iteration == 0: return
-        MSP = self.MSP
-        for t in range(MSP.T):
-            m = MSP.models[t]
-            if self.regularization_type == 'L1':
-                for i in range(m.n_states):
-                    constr = m.getConstrByName(
-                        'regularization_{}[{}]'.format(self.iteration-1,i))
-                    if constr:
-                        m.remove(constr)
-            elif self.regularization_type == 'L2':
-                constrs = m.getQConstrs()
-                for constr in constrs:
-                    m.remove(constr)
-                var = m.getVarByName('regularization_{}'.format(self.iteration-1))
-                if var:
-                    var.obj = 0
-            else:
-                raise NotImplementedError
-            m.update()
+            solution = self._select_trial_solution(random_state, solution)
+            self._backward(solution, j, lock, cuts)
 
     def _add_cut_from_multiprocessing_array(self, cuts):
         for t in range(self.cut_T):
@@ -396,9 +343,11 @@ class SDDP(object):
         lock = multiprocessing.Lock()
         forward_solution = None
         # regularization needs to store last forward_solution
-        if self.regularization_param != 0:
+        if self.rgl_a != 0:
             forward_solution = [multiprocessing.Array(
-                "d",[0] * self.MSP[t].n_states) for t in range(self.MSP.T)]
+                "d",[0] * self.MSP.n_states[self._compute_time_idx(t)])
+                for t in range(self.forward_T)
+            ]
 
         for p in range(self.n_processes):
             procs[p] = multiprocessing.Process(
@@ -410,10 +359,9 @@ class SDDP(object):
             proc.join()
 
         self._add_cut_from_multiprocessing_array(cuts)
-        self._deregularize()
         # regularization needs to store last forward_solution
-        if self.regularization_param != 0:
-            self.forward_solution = [list(item) for item in forward_solution]
+        if self.rgl_a != 0:
+            self.rgl_center = [list(item) for item in forward_solution]
 
         return [item for item in pv]
 
@@ -442,8 +390,9 @@ class SDDP(object):
             logFile=1,
             logToConsole=1,
             directory='',
-            regularization_type='L2',
-            regularization_param=0):
+            rgl_norm='L2',
+            rgl_a=0,
+            rgl_b=0.95):
         """Solve approximation model.
 
         Parameters
@@ -545,10 +494,9 @@ class SDDP(object):
         right_end_of_CI = float("inf")
         db_past = MSP.bound
         self.percentile = percentile
-        self.regularization_type = regularization_type
-        self.regularization_param = regularization_param
-        if self.regularization_param != 0 and MSP._type != 'stage-wise independent':
-            raise NotImplementedError
+        self.rgl_norm = rgl_norm
+        self.rgl_a = rgl_a
+        self.rgl_b = rgl_b
 
         # distinguish pv_sim from pv
         pv_sim_past = None
@@ -617,7 +565,6 @@ class SDDP(object):
                 if self.n_processes != 1:
                     CI = compute_CI(pv,percentile)
                 self.pv.append(pv)
-                self._regularize()
 
                 if self.iteration >= 1:
                     if db_past == db:
@@ -1031,6 +978,7 @@ class SDDP_infinity(SDDP):
         self.forward_T = self.MSP.T
         self.cut_T = self.MSP.T
         self.period = self.MSP.T-1
+        self.cut_type_list = [["B"] for t in range(self.cut_T)]
 
     def solve(self, forward_T=None, *args, **kwargs):
         """Solve approximation model.
@@ -1101,10 +1049,9 @@ class SDDP_infinity(SDDP):
         # would be selected
         if self.forward_T > self.period + 1:
             indices = numpy.arange(0, self.forward_T, self.period)
-            idx = indices[int(rand_int(
-                k=len(indices),
-                random_state=random_state,
-            ))]
+            idx = indices[rand_int(k=len(indices), random_state=random_state)]
+            if idx + self.period > self.forward_T:
+                idx = idx - self.period
             for t in range(1, self.period+1):
                 self.MSP.models[t]._update_link_constrs(forward_solution[idx+t-1])
             return forward_solution[idx:idx+self.period]

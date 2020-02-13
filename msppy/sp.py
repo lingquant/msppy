@@ -1348,6 +1348,55 @@ class StochasticModel(object):
             "infeasibility caught; check complete recourse condition!"
         )
 
+    def regularize(self, center, norm, a, b, i):
+        """Regularize a stochastic model.
+
+        Parameters
+        ----------
+
+        center: array-like
+            The regularization center with length n_states.
+
+        norm: 'L1'/'L2'
+            The norm to use for regularization.
+
+        a,b,i: float,float,integer (a>0, 0<b<1, i>0)
+            The coefficient of the regularization term is a*b^{i}, where i is
+            the index of iteration.
+        """
+        self.rgl = self._model.addVar(
+            lb=0,
+            obj=self.modelsense*b**i,
+            name='rgl'
+        )
+        if norm == 'L1':
+            self.rgl_constr = self._model.addConstrs(
+                (self.rgl >= a*(self.states[i] - center[i])
+                for i in range(self.n_states)),
+                name = 'rgl'
+            ).values()
+        elif norm == 'L2':
+            self.rgl_constr = [self._model.addQConstr(
+                self.rgl -
+                a*gurobipy.QuadExpr(
+                    gurobipy.quicksum([
+                        self.states[i] * self.states[i]
+                        - self.states[i] * 2 * center[i]
+                        + center[i] * center[i]
+                        for i in range(self.n_states)
+                    ])
+                )
+                >=0,
+                name = 'rgl'
+            )]
+        self._model.update()
+
+    def _deregularize(self):
+        self._model.remove(self.rgl)
+        for constr in self.rgl_constr:
+            self._model.remove(constr)
+        self._model.update()
+
 
 class StochasticModelLG(StochasticModel):
     def _solveSB(self, gradLPScen):

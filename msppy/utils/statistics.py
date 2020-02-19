@@ -71,14 +71,14 @@ def check_Markov_states_and_transition_matrix(
     the dimension of MC and the number of Markov states."""
     n_Markov_states = []
     dim_Markov_states = []
-    if len(transition_matrix) != T:
+    if len(transition_matrix) < T:
         raise ValueError(
-            "The transition_matrix is of length {}, expecting of length {}!"
+            "The transition_matrix is of length {}, expecting of longer than {}!"
             .format(len(transition_matrix), T)
         )
-    if len(Markov_states) != T:
+    if len(Markov_states) < T:
         raise ValueError(
-            "The Markov_states is of length {}, expecting of length {}!"
+            "The Markov_states is of length {}, expecting of length longer than{}!"
             .format(len(Markov_states), T)
         )
     a = 1
@@ -115,9 +115,9 @@ def check_Markovian_uncertainty(Markovian_uncertainty, T):
     if not isinstance(initial, numpy.ndarray) or initial.ndim != 3:
         raise ValueError("Sample path generator should always return a three "
             + "dimensional numpy array!")
-    if initial.shape[1] != T:
+    if initial.shape[1] < T:
         raise ValueError("Second dimension of sample path generator expectes "
-            + "to be {} rather than {}!".format(T, initial.shape[1]))
+            + "to be larger than {} rather than {}!".format(T, initial.shape[1]))
     for t in range(T):
         dim_Markov_states.append(initial.shape[2])
     return dim_Markov_states

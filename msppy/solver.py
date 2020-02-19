@@ -39,8 +39,8 @@ class SDDP(object):
             .format(self.__class__, self.n_processes, self.n_steps)
         )
 
-    def _compute_time_idx(self, t):
-        return t
+    def _compute_idx(self, t):
+        return (t,t)
 
     def _select_trial_solution(self, random_state, forward_solution):
         return forward_solution[:-1]
@@ -66,7 +66,7 @@ class SDDP(object):
         stage_cost = numpy.full(self.forward_T,numpy.nan)
         # time loop
         for t in range(self.forward_T):
-            idx = self._compute_time_idx(t)
+            idx, tm_idx = self._compute_idx(t)
             if MSP._type == "stage-wise independent":
                 m = MSP.models[idx]
             else:
@@ -80,8 +80,8 @@ class SDDP(object):
                         state = markovian_idx[t]
                     else:
                         state = random_state.choice(
-                            range(MSP.n_Markov_states[t]),
-                            p=MSP.transition_matrix[t][state]
+                            range(MSP.n_Markov_states[idx]),
+                            p=MSP.transition_matrix[tm_idx][state]
                         )
                     m = MSP.models[idx][state]
                     if markovian_idx is not None:
@@ -139,7 +139,7 @@ class SDDP(object):
                 stage_cost[t] = MSP._get_stage_cost(m, t)/pow(MSP.discount, t)
             pv += MSP._get_stage_cost(m, t)
             if markovian_idx is not None:
-                m._update_uncertainty_dependent(MSP.Markov_states[t][markovian_idx[t]])
+                m._update_uncertainty_dependent(MSP.Markov_states[idx][markovian_idx[t]])
             if self.iteration != 0 and self.rgl_a != 0:
                 m._deregularize()
         #! time loop
@@ -262,7 +262,7 @@ class SDDP(object):
             # regularization needs to store last forward_solution
             if j == jobs[-1] and self.rgl_a != 0:
                 for t in range(self.forward_T):
-                    idx = self._compute_time_idx(t)
+                    idx,_ = self._compute_idx(t)
                     for i in range(self.MSP.n_states[idx]):
                         forward_solution[t][i] = solution[t][i]
             solution = self._select_trial_solution(random_state, solution)
@@ -345,7 +345,7 @@ class SDDP(object):
         # regularization needs to store last forward_solution
         if self.rgl_a != 0:
             forward_solution = [multiprocessing.Array(
-                "d",[0] * self.MSP.n_states[self._compute_time_idx(t)])
+                "d",[0] * self.MSP.n_states[self._compute_idx(t)[0]])
                 for t in range(self.forward_T)
             ]
 
@@ -989,11 +989,8 @@ class SDDP_infinity(SDDP):
             The number of stages to consider in forward passes and trial point
             selection
         """
-        if self.MSP._type == "Markov chain":
-            raise NotImplementedError
         if forward_T: self.forward_T = forward_T
-        self.MSP[-1]._set_up_CTG(discount=self.MSP.discount,
-            bound=self.MSP.bound)
+        self.MSP._set_up_CTG_for_t(-1)
         self.MSP._flag_infinity = 1
         super().solve(*args, **kwargs)
 
@@ -1039,10 +1036,18 @@ class SDDP_infinity(SDDP):
                         gradient=cut[1:]
                     )
                 else:
-                    raise NotImplementedError
+                    for k,cut_k in enumerate(cut):
+                        self.MSP.models[-1][k]._add_cut(
+                            rhs=cut_k[0],
+                            gradient=cut_k[1:]
+                        )
 
-    def _compute_time_idx(self, t):
-        return t%self.period if (t%self.period != 0 or t == 0) else -1
+    def _compute_idx(self, t):
+        idx = t%self.period if (t%self.period != 0 or t == 0) else self.period
+        # transition matrix at stage period+1, 2*period+1, ... should be
+        # additionaly specified.
+        tm_idx = idx if (t%self.period != 1 or t == 1) else self.period+1
+        return (idx,tm_idx)
 
     def _select_trial_solution(self, random_state, forward_solution):
         # if solving more than one single period, only part of obtained solutions

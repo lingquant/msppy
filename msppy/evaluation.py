@@ -276,8 +276,12 @@ class EvaluationTrue(Evaluation):
                 numpy.random.RandomState(2**32-1),self.n_simulations)
             self.markovian_idx = numpy.zeros([self.n_simulations,T],dtype=int)
             for t in range(1,T):
-                dist = numpy.empty([self.n_simulations,MSP.n_Markov_states[t]])
-                for idx, markov_state in enumerate(MSP.Markov_states[t]):
+                if MSP._flag_infinity:
+                    idx = t%(MSP.T-1) if t%(MSP.T-1) != 0 else -1
+                else:
+                    idx = t                
+                dist = numpy.empty([self.n_simulations,MSP.n_Markov_states[idx]])
+                for i, markov_state in enumerate(MSP.Markov_states[idx]):
                     temp = self.markovian_samples[:,t,:] - markov_state
-                    dist[:,idx] = numpy.sum(temp**2, axis=1)
+                    dist[:,i] = numpy.sum(temp**2, axis=1)
                 self.markovian_idx[:,t] = numpy.argmin(dist,axis=1)

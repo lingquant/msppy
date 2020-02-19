@@ -547,15 +547,17 @@ class MSLP(object):
 
     def _set_up_CTG(self):
         for t in range(self.T-1):
-            # MC model may already do model copies
-            M = (
-                [self.models[t]]
-                if type(self.models[t]) != list
-                else self.models[t]
-            )
-            for m in M:
-                m._set_up_CTG(discount=self.discount, bound=self.bound)
-                m.update()
+            self._set_up_CTG_for_t(t)
+
+    def _set_up_CTG_for_t(self, t):
+        M = (
+            [self.models[t]]
+            if type(self.models[t]) != list
+            else self.models[t]
+        )
+        for m in M:
+            m._set_up_CTG(discount=self.discount, bound=self.bound)
+            m.update()
 
     def _get_stage_cost(self, m, t):
         if self.measure == "risk neutral":

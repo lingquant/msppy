@@ -121,14 +121,14 @@ class _Evaluation(object):
         T: int, optional (default=None)
             For infinite horizon problem, the number stages to evaluate the policy.
         """
-
-        from msppy.solver import SDDP, SDDP_infinity
         MSP = self.MSP
         query_T = query_T if query_T else MSP.T
         if not MSP._flag_infinity:
+            from msppy.solver import SDDP
             self.solver = SDDP(MSP)
         else:
-            self.solver = SDDP_infinity(MSP)
+            from msppy.solver import PSDDP
+            self.solver = PSDDP(MSP)
             self.solver.forward_T = query_T
         self.n_simulations = n_simulations
         self._compute_sample_path_idx_and_markovian_path(query_T)
@@ -202,18 +202,33 @@ class _Evaluation(object):
             query_stage_cost=False, stage_cost=None,
             solution=None, solution_dual=None):
         random_state = numpy.random.RandomState([2**32-1, jobs[0]])
-        for j in jobs:
+        MSP = self.MSP
+        markovian_samples = markovian_idices = None
+        solver = self.solver
+        if MSP._type == "Markovian" and self.solve_true:
+            markovian_samples = MSP.Markovian_uncertainty(
+                random_state,len(jobs))
+            markovian_idices = numpy.zeros([len(jobs),solver.forward_T],dtype=int)
+            for t in range(1,solver.forward_T):
+                idx,_ = solver._compute_idx(t)
+                dist = numpy.empty([len(jobs),MSP.n_Markov_states[idx]])
+                for i, markov_state in enumerate(MSP.Markov_states[idx]):
+                    temp = markovian_samples[:,t,:] - markov_state
+                    dist[:,i] = numpy.sum(temp**2, axis=1)
+                markovian_idices[:,t] = numpy.argmin(dist,axis=1)
+
+        for idx,j in enumerate(jobs):
             sample_path_idx = (self.sample_path_idx[j]
                 if self.sample_path_idx is not None else None)
-            markovian_idx = (self.markovian_idx[j]
-                if self.markovian_idx is not None else None)
-            markovian_samples = (self.markovian_samples[j]
-                if self.markovian_samples is not None else None)
+            markovian_idx = (markovian_idices[idx]
+                if markovian_idices is not None else None)
+            markovian_sample = (markovian_samples[idx]
+                if markovian_samples is not None else None)
             result = self.solver._forward(
                 random_state=random_state,
                 sample_path_idx=sample_path_idx,
                 markovian_idx=markovian_idx,
-                markovian_samples=markovian_samples,
+                markovian_samples=markovian_sample,
                 solve_true=self.solve_true,
                 query=query,
                 query_dual=query_dual,
@@ -271,17 +286,3 @@ class EvaluationTrue(Evaluation):
             return super()._compute_sample_path_idx_and_markovian_path(T)
         self.n_sample_paths = self.n_simulations
         self.solve_true = True
-        if MSP._type == "Markovian":
-            self.markovian_samples = MSP.Markovian_uncertainty(
-                numpy.random.RandomState(2**32-1),self.n_simulations)
-            self.markovian_idx = numpy.zeros([self.n_simulations,T],dtype=int)
-            for t in range(1,T):
-                if MSP._flag_infinity:
-                    idx = t%(MSP.T-1) if t%(MSP.T-1) != 0 else -1
-                else:
-                    idx = t                
-                dist = numpy.empty([self.n_simulations,MSP.n_Markov_states[idx]])
-                for i, markov_state in enumerate(MSP.Markov_states[idx]):
-                    temp = self.markovian_samples[:,t,:] - markov_state
-                    dist[:,i] = numpy.sum(temp**2, axis=1)
-                self.markovian_idx[:,t] = numpy.argmin(dist,axis=1)

@@ -1,8 +1,8 @@
 from msppy.utils.examples import (construct_nvid, construct_nvic,
     construct_nvida, construct_nvidi, construct_nvidinf,
     construct_nvmc, construct_nvm, construct_nvidinfi, construct_nvici)
-from msppy.solver import (SDDP, Extensive, SDDiP, Extensive_rolling,
-SDDiP_infinity, SDDP_infinity)
+from msppy.solver import (SDDP, Extensive, SDDiP, Rolling,
+PSDDiP, PSDDP)
 
 class TestSDDP(object):
 
@@ -120,19 +120,19 @@ class TestSDDPInfinity(object):
 
     def test_SDDP(self):
         self.nvidinf = construct_nvidinf()
-        SDDP_infinity(self.nvidinf).solve(max_iterations=10)
+        PSDDP(self.nvidinf).solve(max_iterations=10)
 
     def test_SDDP_trial_solution_selection(self):
         self.nvidinf = construct_nvidinf()
-        SDDP_infinity(self.nvidinf).solve(
+        PSDDP(self.nvidinf).solve(
             forward_T=7, max_iterations=10)
         self.nvidinf = construct_nvidinf()
-        SDDP_infinity(self.nvidinf).solve(
-            forward_T=6, max_iterations=10)            
+        PSDDP(self.nvidinf).solve(
+            forward_T=6, max_iterations=10)
 
     def test_SDDiP(self):
         self.nvidinfi = construct_nvidinfi()
-        SDDiP_infinity(self.nvidinfi).solve(
+        PSDDiP(self.nvidinfi).solve(
             cuts=['SB'],
             max_iterations=10
         )
@@ -152,5 +152,20 @@ class TestExtensive(object):
         Extensive(self.nvid).solve()
         Extensive(self.nvmc).solve()
 
-    def test_extensive_rolling(self):
-        pass
+    def test_rolling(self):
+        self.nvm = construct_nvm()
+        def conditional_dist(random_state, prev, t):
+            return (0.5 * prev +
+                    + random_state.lognormal(2.5,1))
+        Rolling(self.nvm).solve(
+            n_simulations=100,
+            n_processes=3,
+            n_branches=10,
+            conditional_dist=conditional_dist
+        )
+        self.nvm = construct_nvm()
+        Rolling(self.nvm).solve(
+            n_simulations=100,
+            n_branches=10,
+            conditional_dist=conditional_dist
+        )

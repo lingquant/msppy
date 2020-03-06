@@ -942,6 +942,7 @@ class StochasticModel(object):
         replace: boolean, optional, default is True
             Whether the sample is with or without replacement.
         """
+        if hasattr(self,'_flag_discrete') and self._flag_discrete == 1: return
         # Discretize continuous true problem
         if self._type == "continuous":
             self.n_samples = n_samples
@@ -971,7 +972,7 @@ class StochasticModel(object):
                 self.uncertainty_mix_continuous.items(),
                 key=lambda t: repr(t[0]),
             ):
-                for _ in range(self.n_samples):
+                for i in range(self.n_samples):
                     sample = dist(random_state)
                     for index, key in enumerate(keys):
                         if type(key) == gurobipy.Var:
@@ -1303,6 +1304,7 @@ class StochasticModel(object):
         self.uncertainty_obj = {}
         self.probability = None
         self.n_samples = 1
+        self._flag_discrete = 0
 
     def _recover_discrete_uncertainty_from_cache(self, cache):
         for k,v in cache.items():
@@ -1321,6 +1323,11 @@ class StochasticModel(object):
             for var in vars
             if var.varName not in states_name + local_copies_name
         ]
+
+    @property
+    def states_and_controls(self):
+        """Get state and control variables"""
+        return self.states + self.controls
 
     def get_cut_coeffs_and_rhs(self):
         """Get coefficients and rhs of cuts.

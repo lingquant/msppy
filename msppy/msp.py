@@ -65,6 +65,7 @@ class MSLP(object):
             outputFlag=0,
             discount=1.0,
             ctg=False,
+            env=None,
             **kwargs):
         if (T < 2
                 or discount > 1
@@ -90,6 +91,7 @@ class MSLP(object):
         self.db = None
         self._flag_infinity = 0
         if ctg: self._set_up_CTG()
+        self.env = env
 
     def __repr__(self):
         sense = 'Minimization' if self.sense == 1 else 'Maximization'
@@ -106,7 +108,7 @@ class MSLP(object):
             self.bound = -1000000000 if self.sense == 1 else 1000000000
 
     def _set_up_model(self):
-        self.models = [StochasticModel(name=str(t)) for t in range(self.T)]
+        self.models = [StochasticModel(name=str(t), env=self.env) for t in range(self.T)]
 
     def _set_up_model_attr(self, sense, outputFlag, kwargs):
         for t in range(self.T):

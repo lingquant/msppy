@@ -12,8 +12,9 @@ import math
 
 class StochasticModel(object):
     """The StochasticModel class"""
-    def __init__(self, name=""):
-        self._model = gurobipy.Model(env=gurobipy.Env(), name=name)
+    def __init__(self, name="", env=None):
+        genv = env if env is not None else gurobipy.Env()
+        self._model = gurobipy.Model(env=genv, name=name)
         # each and every instance must have state variables, local copy variables
         self.states = []
         self.local_copies = []

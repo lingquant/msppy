@@ -75,6 +75,7 @@ class MSLP(object):
             raise Exception('Arguments of SDDP construction are not valid!')
 
         self.T = T
+        self.env = env
         self.discount = discount
         self.bound = bound
         self.sense = sense
@@ -91,7 +92,6 @@ class MSLP(object):
         self.db = None
         self._flag_infinity = 0
         if ctg: self._set_up_CTG()
-        self.env = env
 
     def __repr__(self):
         sense = 'Minimization' if self.sense == 1 else 'Maximization'
@@ -956,7 +956,7 @@ class MSLP(object):
 class MSIP(MSLP):
 
     def _set_up_model(self):
-        self.models = [StochasticModelLG(name=str(t)) for t in range(self.T)]
+        self.models = [StochasticModelLG(name=str(t), env=self.env) for t in range(self.T)]
 
     def _check_individual_stage_models(self):
         """Check state variables are set properly. Check stage-wise continuous

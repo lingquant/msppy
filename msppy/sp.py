@@ -14,6 +14,7 @@ class StochasticModel(object):
     """The StochasticModel class"""
     def __init__(self, name="", env=None):
         genv = env if env is not None else gurobipy.Env()
+        self.env = genv
         self._model = gurobipy.Model(env=genv, name=name)
         # each and every instance must have state variables, local copy variables
         self.states = []
@@ -1352,6 +1353,8 @@ class StochasticModel(object):
 
     def write_infeasible_model(self, text):
         self._model.write('./' + text + ".lp")
+        self._model.computeIIS()
+        self._model.write('./' + text + ".ilp")
         raise Exception(
             "infeasibility caught; check complete recourse condition!"
         )
@@ -1452,7 +1455,7 @@ class StochasticModelLG(StochasticModel):
             # Initialize the current gradient as the solution of dual variables
             grad_current = gradLPScen[k]
             # Set up projection model
-            model_proj = gurobipy.Model()
+            model_proj = gurobipy.Model(env=self.env)
             model_proj.Params.outputFlag = 0
             pi_proj = model_proj.addVars(
                 n_local_copies,
@@ -1463,7 +1466,7 @@ class StochasticModelLG(StochasticModel):
             model_proj.setObjective(gurobipy.quicksum(x * x for x in pi_proj))
             # Set up cut model
             if not flag_tight:
-                model_cut = gurobipy.Model()
+                model_cut = gurobipy.Model(env=self.env)
                 model_cut.Params.outputFlag = 0
                 model_cut.modelsense = -self.modelsense
                 theta = model_cut.addVar(lb=-gurobipy.GRB.INFINITY, obj=1)

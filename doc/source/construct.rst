@@ -229,6 +229,10 @@ have a deterministic first stage).
                 uncertainty={'rhs':rhs[t-1]})
             m.addConstr(sold + recycled == buy_past)
 
+Dual problems
+-------------
+Coming soon...
+
 Uncertainty
 -----------
 From the above examples, you have already seen the way to build the true problem.

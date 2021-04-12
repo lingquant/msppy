@@ -665,6 +665,10 @@ class MSLP(object):
         else:
             raise TypeError("a should be float/array-like instead of \
             {}!".format(type(a)))
+        
+        self.a = a
+        self.l = l
+
         if method == 'direct':
             self._set_up_CTG()
             from msppy.utils.measure import Expectation_AVaR

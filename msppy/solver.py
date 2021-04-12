@@ -8,6 +8,7 @@ import gurobipy
 import numbers
 from collections import abc
 import pandas
+import math
 
 
 class SDDP(object):
@@ -20,7 +21,7 @@ class SDDP(object):
         A multi-stage stochastic program object.
     """
 
-    def __init__(self, MSP):
+    def __init__(self, MSP,biased_sampling = False):
         self.db = []
         self.pv = []
         self.MSP = MSP
@@ -32,6 +33,20 @@ class SDDP(object):
         self.n_processes = 1
         self.n_steps = 1
         self.percentile = 95
+        self.biased_sampling = biased_sampling
+
+        if self.biased_sampling:
+            try:
+                self.a = self.MSP.a
+                self.l = self.MSP.l
+                for t in range(self.MSP.T):
+                    m = self.MSP.models[t]
+                    n_samples = m.n_samples
+                    m.counts = numpy.zeros(n_samples)
+                    m.weights = numpy.ones(n_samples)/n_samples 
+            except AttributeError:
+                raise Exception("Risk averse parameters unset!")
+            
 
     def __repr__(self):
         return (
@@ -44,6 +59,8 @@ class SDDP(object):
 
     def _select_trial_solution(self, random_state, forward_solution):
         return forward_solution[:-1]
+    
+    
 
     def _forward(
             self,
@@ -116,9 +133,14 @@ class SDDP(object):
                 # 3: true stagewise independent randomness is small. In this
                 # case, true problem and approximation problem are the same.
                 else:
+                    if self.biased_sampling:
+                        sampling_probability = m.weights
+                    else:
+                        sampling_probability = m.probability
+
                     scen = rand_int(
                         k=m.n_samples,
-                        probability=m.probability,
+                        probability=sampling_probability,
                         random_state=random_state,
                     )
                     m._update_uncertainty(scen)
@@ -227,6 +249,10 @@ class SDDP(object):
                 if MSP.n_Markov_states != 1:
                     m._update_link_constrs(forward_solution[t-1])
                 objLPScen[k], gradLPScen[k] = m._solveLP()
+
+                if self.biased_sampling:
+                    self._compute_bs_frequency(objLPScen[k], m, t)
+
             objLP, gradLP = self._compute_cuts(t, m, objLPScen, gradLPScen)
             objLP -= numpy.matmul(gradLP, forward_solution[t-1])
             self._add_and_store_cuts(t, objLP, gradLP, cuts, "B", j)
@@ -235,6 +261,46 @@ class SDDP(object):
 
     def _add_cuts_additional_procedure(*args, **kwargs):
         pass
+
+    def _compute_bs_frequency(self,obj, m, t):
+        
+        n_samples = m.n_samples
+        
+        if self.iteration > 0:
+            objSortedIndex = numpy.argsort(obj)
+            tempSum = 0
+
+            for index in objSortedIndex:
+                tempSum += m.weights[index]
+                if tempSum >= 1 - self.a[t]:
+                    obj_kappa = index
+                    break
+
+            for k in range(n_samples):
+                if obj[k] >= obj[obj_kappa]:
+                    m.counts[k] += 1
+                m.counts[k] *= 1 - math.pow(0.5, self.iteration)
+
+            countSorted = numpy.sort(m.counts)
+            countSortedIndex = numpy.argsort(m.counts)
+              
+            kappa = math.ceil((1-self.a[t])*n_samples)
+            count_kappa = countSorted[kappa-1]
+              
+            strict_orders = countSortedIndex[[i for i in range(n_samples) 
+                                           if i > kappa-1]]
+
+            for k in range(n_samples):
+                if m.counts[k] < count_kappa:
+                    m.weights[k] = (1-self.l[t])/n_samples
+                elif m.counts[k] == count_kappa and k not in strict_orders:
+                    m.weights[k] = ((1-self.l[t])/n_samples + self.l[t] 
+                         - self.l[t]*(n_samples-kappa)/(self.a[t] * n_samples))
+                elif m.counts[k] > count_kappa or k in strict_orders:
+                    m.weights[k] = ((1-self.l[t])/n_samples 
+                                 + self.l[t]/(self.a[t] * n_samples))
+        
+
 
     def _SDDP_single(self):
         """A single serial SDDP step. Returns the policy value."""
@@ -392,7 +458,8 @@ class SDDP(object):
             directory='',
             rgl_norm='L2',
             rgl_a=0,
-            rgl_b=0.95):
+            rgl_b=0.95,
+            ):
         """Solve the discretized problem.
 
         Parameters
@@ -497,6 +564,7 @@ class SDDP(object):
         self.rgl_norm = rgl_norm
         self.rgl_a = rgl_a
         self.rgl_b = rgl_b
+
 
         # distinguish pv_sim from pv
         pv_sim_past = None
@@ -1579,3 +1647,68 @@ class Rolling(object):
         self.pv = [item for item in a]
         if self.n_simulations != 1:
             self.CI = compute_CI(self.pv, percentile)
+
+
+# class SDDP_BS(SDDP):
+#     def __init__(self, *args, **kwargs ):
+
+#         super().__init__(*args,**kwargs)
+
+#         self.a = self.MSP.a
+#         self.l = self.MSP.l
+#         # raise error here for nonexistence of parameters a and l
+
+    
+#     def compute_bs_frequency(self,obj, m, t):
+
+#         n_samples = m.n_samples
+#         objSortedIndex = numpy.argsort(obj)
+#         tempSum = 0
+
+#         for index in objSortedIndex:
+#           tempSum += m.weights[index]
+#           if tempSum >= 1 - self.a[t]:
+#               obj_kappa = index
+#               break
+
+        
+#         if self.iteration == 0:
+#           m.counts = numpy.zeros(n_samples)
+          
+#         else:
+#           for k in range(n_samples):
+#             if obj[k] >= obj[obj_kappa]:
+#               m.counts[k] += 1
+#             m.counts[k] *= 1 - math.pow(0.5, self.iteration)
+
+#           countSorted = numpy.sort(m.counts)
+#           countSortedIndex = numpy.argsort(m.counts)
+          
+#           kappa = math.ceil((1-self.a[t])*n_samples)
+#           count_kappa = countSorted[kappa-1]
+          
+#           strict_orders = countSortedIndex[[i for i in range(n_samples) 
+#                                        if i > kappa-1]]
+
+#           for k in range(n_samples):
+#             if m.counts[k] < count_kappa:
+#               m.probability[k] = (1-self.l[t])/n_samples
+#             elif m.counts[k] == count_kappa and k not in strict_orders:
+#               m.probability[k] = ((1-self.l[t])/n_samples + self.l[t] 
+#                          - self.l[t]*(n_samples-kappa)/(self.a[t] * n_samples))
+#             elif m.counts[k] > count_kappa or k in strict_orders:
+#               m.probability[k] = ((1-self.l[t])/n_samples 
+#                                  + self.l[t]/(self.a[t] * n_samples))
+
+# class PSDDP_BS(SDDP_BS,PSDDP):
+
+#     def __init__(self, *args, **kwargs ):
+
+#         super().__init__(*args,**kwargs)
+
+#         self.a = self.MSP.a
+#         self.l = self.MSP.l
+
+
+
+

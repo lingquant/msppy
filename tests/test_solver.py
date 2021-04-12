@@ -130,6 +130,13 @@ class TestSDDPInfinity(object):
         PSDDP(self.nvidinf).solve(
             forward_T=6, max_iterations=10)
 
+    def test_SDDP_biased_sampling(self):
+        self.nvidinf = construct_nvidinf()
+        self.nvidinf.set_AVaR(l=0.2, a=0.05, method='direct')
+        PSDDP(self.nvidinf,biased_sampling=True).solve(
+            forward_T=7, max_iterations=10)
+
+
     def test_SDDiP(self):
         self.nvidinfi = construct_nvidinfi()
         PSDDiP(self.nvidinfi).solve(

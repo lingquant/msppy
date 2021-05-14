@@ -287,20 +287,23 @@ class SDDP(object):
             kappa = math.ceil((1-self.a[t])*n_samples)
             count_kappa = countSorted[kappa-1]
               
-            strict_orders = countSortedIndex[[i for i in range(n_samples) 
+            upper_orders = countSortedIndex[[i for i in range(n_samples) 
                                            if i > kappa-1]]
+            lower_orders = countSortedIndex[[i for i in range(n_samples) 
+                                           if i < kappa-1]]                               
 
             for k in range(n_samples):
                 if m.counts[k] < count_kappa:
                     m.weights[k] = (1-self.l[t])/n_samples
-                elif m.counts[k] == count_kappa and k not in strict_orders:
+                elif m.counts[k] == count_kappa and k in lower_orders:
+                    m.weights[k] = (1-self.l[t])/n_samples
+                elif m.counts[k] == count_kappa and k not in upper_orders:
                     m.weights[k] = ((1-self.l[t])/n_samples + self.l[t] 
                          - self.l[t]*(n_samples-kappa)/(self.a[t] * n_samples))
-                elif m.counts[k] > count_kappa or k in strict_orders:
+                elif m.counts[k] > count_kappa or k in upper_orders:
                     m.weights[k] = ((1-self.l[t])/n_samples 
                                  + self.l[t]/(self.a[t] * n_samples))
         
-
 
     def _SDDP_single(self):
         """A single serial SDDP step. Returns the policy value."""

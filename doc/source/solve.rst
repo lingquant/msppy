@@ -157,8 +157,12 @@ Indirect method
     nvid_sddp.first_stage_solution
 
 Biased sampling
-~~~~~~~~~~~~~~~~~~~~~
-For both finite-horizon and infinite horizon risk averse problems, we provide a biased sampling scheme to solve the problem. Details can be found in the `paper <https://www.sciencedirect.com/science/article/abs/pii/S0377221720300989>`_. A biased sampling scheme is in essence a change of the refrence probability measure making `bad' scenarios more frequent and is shown to improve the rate of convergence. 
+~~~~~~~~~~~~~~~
+For both finite-horizon and infinite horizon risk averse problems, we provide a 
+biased sampling scheme to solve the problem. Details can be found in the 
+`paper <https://www.sciencedirect.com/science/article/abs/pii/S0377221720300989>`_. 
+A biased sampling scheme is in essence a change of the refrence probability 
+measure making `bad' scenarios more frequent and is shown to improve the rate of convergence. 
 
 Finite horizon
 

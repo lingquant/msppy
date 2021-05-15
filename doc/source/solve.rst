@@ -156,6 +156,34 @@ Indirect method
     nvid_sddp.solve(max_iterations=20)
     nvid_sddp.first_stage_solution
 
+Biased sampling
+~~~~~~~~~~~~~~~~~~~~~
+For both finite-horizon and infinite horizon risk averse problems, we provide a biased sampling scheme to solve the problem. Details can be found in the `paper <https://www.sciencedirect.com/science/article/abs/pii/S0377221720300989>`_. A biased sampling scheme is in essence a change of the refrence probability measure making `bad' scenarios more frequent and is shown to improve the rate of convergence. 
+
+Finite horizon
+
+.. code-block:: python
+
+    from msppy.utils.examples import construct_nvid
+    from msppy.solver import SDDP
+    nvid = construct_nvid()
+    nvid.set_AVaR(l=0.5, a=0.1)
+    nvid_sddp = SDDP(nvid, biased_sampling = True)
+    nvid_sddp.solve(max_iterations=20)
+
+Inifinite horizon
+
+.. code-block:: python
+
+    from msppy.utils.examples import construct_nvid
+    from msppy.solver import SDDP
+    nvid = construct_nvid()
+    nvid.set_AVaR(l=0.5, a=0.1)
+    nvid_sddp = PSDDP(nvid, biased_sampling = True)
+    nvid_sddp.solve(max_iterations=20)
+
+
+
 Integer problem
 ---------------
 

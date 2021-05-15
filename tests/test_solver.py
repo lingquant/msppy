@@ -69,6 +69,13 @@ class TestSDDP(object):
             rgl_norm='L2',
         )
 
+
+    def test_SDDP_biased_sampling(self):
+        self.nvidinf = construct_nvidinf()
+        self.nvidinf.set_AVaR(l=0.2, a=0.05, method='direct')
+        SDDP(self.nvidinf,biased_sampling=True).solve(
+           max_iterations=10)
+
 class TestSDDiP(object):
 
 
@@ -176,3 +183,4 @@ class TestExtensive(object):
             n_branches=10,
             conditional_dist=conditional_dist
         )
+

@@ -1188,7 +1188,7 @@ class Extensive(object):
 
         construction_start_time = time.time()
 
-        self.extensive_model = gurobipy.Model()
+        self.extensive_model = gurobipy.Model(env=self.MSP.env)
         self.extensive_model.modelsense = self.MSP.sense
         self.start = start
 

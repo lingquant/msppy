@@ -65,6 +65,7 @@ class MSLP(object):
             outputFlag=0,
             discount=1.0,
             ctg=False,
+            env=None,
             **kwargs):
         if (T < 2
                 or discount > 1
@@ -74,6 +75,7 @@ class MSLP(object):
             raise Exception('Arguments of SDDP construction are not valid!')
 
         self.T = T
+        self.env = env
         self.discount = discount
         self.bound = bound
         self.sense = sense
@@ -106,7 +108,7 @@ class MSLP(object):
             self.bound = -1000000000 if self.sense == 1 else 1000000000
 
     def _set_up_model(self):
-        self.models = [StochasticModel(name=str(t)) for t in range(self.T)]
+        self.models = [StochasticModel(name=str(t), env=self.env) for t in range(self.T)]
 
     def _set_up_model_attr(self, sense, outputFlag, kwargs):
         for t in range(self.T):
@@ -958,7 +960,7 @@ class MSLP(object):
 class MSIP(MSLP):
 
     def _set_up_model(self):
-        self.models = [StochasticModelLG(name=str(t)) for t in range(self.T)]
+        self.models = [StochasticModelLG(name=str(t), env=self.env) for t in range(self.T)]
 
     def _check_individual_stage_models(self):
         """Check state variables are set properly. Check stage-wise continuous
